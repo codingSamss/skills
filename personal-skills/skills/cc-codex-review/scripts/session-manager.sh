@@ -9,6 +9,8 @@
 #   session-manager.sh status <项目根目录>
 #   session-manager.sh check-stale <项目根目录> [阈值分钟数]
 #   session-manager.sh auto-cleanup <项目根目录> [阈值分钟数]
+#   session-manager.sh complete <项目根目录> <阶段名>
+#   session-manager.sh complete-all <项目根目录>
 #
 # 阶段名: plan-review | code-review | final-review
 # 阈值分钟数: 默认 60 分钟
@@ -41,6 +43,8 @@ usage() {
     echo "  status        显示所有阶段的会话状态"
     echo "  check-stale   检查会话是否过期（第三个参数为阈值分钟数，默认60）"
     echo "  auto-cleanup  自动清理过期会话（第三个参数为阈值分钟数，默认60）"
+    echo "  complete      归档指定阶段的会话（保留记录，标记为已完成）"
+    echo "  complete-all  归档所有阶段的会话（整个审查周期结束）"
     echo ""
     echo "Phases: plan-review | code-review | final-review"
     exit 1
@@ -218,6 +222,53 @@ do_reset_all() {
     fi
 }
 
+# 归档指定阶段的会话（保留记录，标记为已完成）
+do_complete() {
+    local root="$1"
+    local phase="$2"
+    validate_phase "$phase"
+
+    local file
+    file=$(session_file "$root" "$phase")
+
+    if [[ -f "$file" ]]; then
+        local timestamp
+        timestamp=$(date "+%Y%m%d-%H%M%S")
+        mv "$file" "${file%.session}.${timestamp}.archived"
+        echo -e "${GREEN}已归档 ${phase} 的会话${NC}"
+    else
+        echo -e "${YELLOW}${phase} 无活跃会话，跳过归档${NC}"
+    fi
+}
+
+# 归档所有阶段的会话（整个审查周期结束）
+do_complete_all() {
+    local root="$1"
+    local phases=("plan-review" "code-review" "final-review")
+    local timestamp
+    timestamp=$(date "+%Y%m%d-%H%M%S")
+    local archived=0
+
+    for phase in "${phases[@]}"; do
+        local file
+        file=$(session_file "$root" "$phase")
+        if [[ -f "$file" ]]; then
+            mv "$file" "${file%.session}.${timestamp}.archived"
+            echo -e "${GREEN}  已归档 ${phase}${NC}"
+            archived=$((archived + 1))
+        fi
+    done
+
+    # 清除活动时间戳
+    rm -f "$(activity_file "$root")"
+
+    if [[ $archived -gt 0 ]]; then
+        echo -e "${GREEN}已归档 ${archived} 个会话，审查周期结束${NC}"
+    else
+        echo -e "${YELLOW}无活跃会话需要归档${NC}"
+    fi
+}
+
 # 显示状态
 do_status() {
     local root="$1"
@@ -254,6 +305,15 @@ do_status() {
             echo -e "  ${phase}: ${RED}无会话${NC}"
         fi
     done
+
+    echo ""
+
+    # 检查归档会话
+    local archive_count
+    archive_count=$(find "${root}/${SESSIONS_DIR}" -name "*.archived" 2>/dev/null | wc -l | tr -d ' ')
+    if [[ $archive_count -gt 0 ]]; then
+        echo -e "  历史归档: ${archive_count} 个"
+    fi
 
     echo ""
 
@@ -308,6 +368,13 @@ case "$ACTION" in
         ;;
     auto-cleanup)
         do_auto_cleanup "$PROJECT_ROOT" "$PHASE"
+        ;;
+    complete)
+        [[ -z "$PHASE" ]] && usage
+        do_complete "$PROJECT_ROOT" "$PHASE"
+        ;;
+    complete-all)
+        do_complete_all "$PROJECT_ROOT"
         ;;
     *)
         echo -e "${RED}错误: 未知操作 '${ACTION}'${NC}" >&2

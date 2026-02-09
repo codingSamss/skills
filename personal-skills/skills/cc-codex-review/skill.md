@@ -153,9 +153,27 @@ $SESSION_MANAGER save $PWD plan-review "<session_id>"
 - Codex 响应的 JSON 中包含 `SESSION_ID` 字段（注意：字段名为大写）
 - 首次调用后必须提取并保存
 
-## 会话新鲜度自动检测
+## 会话生命周期管理
 
-防止新的 CC 会话误用上一次会话遗留的 Codex session，导致双方上下文不对称。
+### 主动归档（正常流程）
+
+每个审查阶段完成并与用户确认结果后，主动归档该阶段的 Codex session：
+
+```bash
+# 单阶段归档
+$SESSION_MANAGER complete $PWD plan-review
+
+# 整个审查周期结束时归档所有阶段
+$SESSION_MANAGER complete-all $PWD
+```
+
+- `complete` 将 `.session` 文件重命名为 `.archived`（带时间戳），保留历史记录
+- 归档后 `read` 返回空值，下次审查自动从头开始
+- 在阶段一/二的最后步骤中归档当前阶段；在阶段三（最终验收）完成后调用 `complete-all` 归档所有阶段
+
+### 过期兜底（异常流程）
+
+防止 CC 会话中途崩溃、未走到确认步骤时遗留脏数据：
 
 **检测时机：** 在阶段一/二/三的 Step 1 之前自动执行。
 
@@ -164,9 +182,9 @@ $SESSION_MANAGER save $PWD plan-review "<session_id>"
 $SESSION_MANAGER auto-cleanup $PWD 60
 ```
 
-- 如果距离上次审查活动超过 60 分钟，自动重置所有 Codex 会话
+- 如果距离上次审查活动超过 60 分钟且仍有未归档的活跃会话，自动重置
 - 重置后通知用户："检测到上次审查已结束（上次活动: [时间]），已自动清理旧会话，开始新的审查周期"
-- 如果无历史会话或会话仍在活跃期内，静默跳过，不输出任何提示
+- 如果无历史会话或会话仍在活跃期内，静默跳过
 
 **活动时间更新：**
 - 每次保存 SESSION_ID 时自动更新活动时间戳（`session-manager.sh save` 内置）
@@ -314,6 +332,10 @@ $SESSION_MANAGER save $PWD plan-review "<从响应中提取的session_id>"
 ```
 
 - 向用户报告审查完成
+- 用户确认结果后，归档该阶段会话：
+```bash
+$SESSION_MANAGER complete $PWD plan-review
+```
 
 ## 阶段二：代码审查 (`/review code`)
 
@@ -396,6 +418,11 @@ $SESSION_MANAGER save $PWD code-review "<从响应中提取的session_id>"
 - 主要修改: [摘要]
 ```
 
+- 用户确认结果后，归档该阶段会话：
+```bash
+$SESSION_MANAGER complete $PWD code-review
+```
+
 ## 阶段三：最终验收 (`/review final`)
 
 ### 前置条件
@@ -464,6 +491,11 @@ $SESSION_MANAGER save $PWD final-review "<从响应中提取的session_id>"
 - 结论: APPROVE
 - 验收摘要: [Codex 的验收报告摘要]
 - 遗留事项: [如有]
+```
+
+- 用户确认验收结果后，归档所有阶段会话（审查周期结束）：
+```bash
+$SESSION_MANAGER complete-all $PWD
 ```
 
 ## 异常处理
