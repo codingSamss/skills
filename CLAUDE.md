@@ -59,7 +59,7 @@ Instructions for Claude...
 | bird-twitter | Bird CLI (`brew install steipete/tap/bird`) | - |
 | peekaboo | Peekaboo (`brew install steipete/tap/peekaboo`) | - |
 | committer | Git, `scripts/committer` | Bash |
-| cc-codex-review | Codex MCP server | Bash (`scripts/session-manager.sh`) |
+| cc-codex-review | Codex MCP server | Python (`scripts/topic-manager.py`) |
 | plugin-manager | Claude Code plugin system | Bash (`scripts/`) |
 | ui-ux-pro-max | Python 3 | Python (`scripts/search.py`, `scripts/core.py`) |
 | json-canvas | None | - |
