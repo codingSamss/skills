@@ -123,7 +123,7 @@ Skill 也支持自然语言触发，CC 会根据意图自动路由到对应阶�
 **执行流程**：
 1. 自动检测过期周期 + 创建新审查周期（如果没有活跃周期）
 2. 从 `doc/` 目录或对话上下文收集计划内容
-3. 读取 `CLAUDE.md` 获取项目背景
+3. 读取项目背景（优先 `CLAUDE.md`，其次 `.claude/CLAUDE.md`）
 4. 构造 Prompt 发送给 Codex
 5. 进入 battle 循环（最多 5 轮）
 6. 达成一致后保存共识计划到周期目录和用户可见的 `doc/` 目录
@@ -147,7 +147,7 @@ Skill 也支持自然语言触发，CC 会根据意图自动路由到对应阶�
 6. 可测试性 - 是否便于单元测试？
 
 **特殊行为**：
-- 通过 `git diff master...HEAD` 收集代码变更
+- 自动探测基线分支（origin/HEAD -> main -> master）并收集完整差异（提交差异 + 工作区改动）
 - 如果 diff 超过 8000 行，自动按模块分批审查
 - battle 过程中如果 CC 接受了修改意见，会**先实际修改代码**，然后将最新 diff 发给 Codex 复查
 - 同一个审查周期内可以多次执行 `/review code`（每次代码审查使用独立的 Codex session，归档后下次创建新 session）
@@ -492,3 +492,8 @@ cc-codex-review/
 | Git | 收集代码变更 (diff) | 系统预装 |
 
 CodexMCP 是一个无状态的 CLI 封装，底层调用 `codex exec`。它不做上下文管理，MCP 响应有 25000 token 的限制（CC 端设置），但 Codex 模型本身有 200k+ token 上下文，在结构化 Prompt 场景下足够使用。
+
+## 设计约束
+
+- **单用户设计**：本 Skill 面向个人开发者在单台机器上使用，session-manager.sh 不做并发锁控制。多终端同时对同一项目执行审查操作可能导致状态不一致。
+- **Codex 只读模式**：所有 Codex 调用均使用 `sandbox: "read-only"`，Codex 不会修改任何项目文件，所有代码修改由 CC 执行。

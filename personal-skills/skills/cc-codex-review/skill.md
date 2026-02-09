@@ -118,11 +118,11 @@ PLAN_DOC_DIR=<用户指定的相对路径>
 1. **`/review plan`** -> 执行「阶段一：计划审查」（同时创建新审查周期）
 2. **`/review code`** -> 执行「阶段二：代码审查」（要求已有活跃周期）
 3. **`/review final`** -> 执行「阶段三：最终验收」（要求已有活跃周期）
-4. **`/review status`** -> 执行 `$SESSION_MANAGER status $PWD`，展示结果
-5. **`/review reset plan`** -> 执行 `$SESSION_MANAGER reset $PWD plan-review`
-6. **`/review reset code`** -> 执行 `$SESSION_MANAGER reset $PWD code-review`
-7. **`/review reset final`** -> 执行 `$SESSION_MANAGER reset $PWD final-review`
-8. **`/review reset-all`** -> 执行 `$SESSION_MANAGER reset-all $PWD`
+4. **`/review status`** -> 执行 `"$SESSION_MANAGER" status "$PWD"`，展示结果
+5. **`/review reset plan`** -> 执行 `"$SESSION_MANAGER" reset "$PWD" plan-review`
+6. **`/review reset code`** -> 执行 `"$SESSION_MANAGER" reset "$PWD" code-review`
+7. **`/review reset final`** -> 执行 `"$SESSION_MANAGER" reset "$PWD" final-review`
+8. **`/review reset-all`** -> 执行 `"$SESSION_MANAGER" reset-all "$PWD"`
 9. **`/review config dir <路径>`** -> 修改计划文档目录，保存到 `$PWD/$DATA_DIR/config`
 
 ## SESSION_ID 管理
@@ -131,12 +131,12 @@ PLAN_DOC_DIR=<用户指定的相对路径>
 
 **读取 SESSION_ID：**
 ```bash
-SESSION_ID=$($SESSION_MANAGER read $PWD plan-review)
+SESSION_ID=$("$SESSION_MANAGER" read "$PWD" plan-review)
 ```
 
 **保存 SESSION_ID（从 Codex 首次响应中提取）：**
 ```bash
-$SESSION_MANAGER save $PWD plan-review "<session_id>"
+"$SESSION_MANAGER" save "$PWD" plan-review "<session_id>"
 ```
 
 **关键规则：**
@@ -206,10 +206,10 @@ $SESSION_MANAGER save $PWD plan-review "<session_id>"
 
 ```bash
 # 单阶段归档
-$SESSION_MANAGER complete $PWD plan-review
+"$SESSION_MANAGER" complete "$PWD" plan-review
 
 # 整个审查周期结束时归档所有阶段并关闭周期
-$SESSION_MANAGER complete-all $PWD
+"$SESSION_MANAGER" complete-all "$PWD"
 ```
 
 - `complete` 将 `.session` 文件重命名为 `.archived`（带时间戳），保留历史记录
@@ -225,7 +225,7 @@ $SESSION_MANAGER complete-all $PWD
 
 **检测逻辑：**
 ```bash
-$SESSION_MANAGER auto-cleanup $PWD 60
+"$SESSION_MANAGER" auto-cleanup "$PWD" 60
 ```
 
 - 如果距离上次审查活动超过 60 分钟且仍有未归档的活跃周期，标记为 abandoned 并清除指针
@@ -237,7 +237,7 @@ $SESSION_MANAGER auto-cleanup $PWD 60
 旧的 completed/abandoned 周期目录会在创建新周期时自动清理：
 
 ```bash
-$SESSION_MANAGER cycle-cleanup $PWD 5
+"$SESSION_MANAGER" cycle-cleanup "$PWD" 5
 ```
 
 - 保留最近 5 个非活跃周期，超出部分直接删除
@@ -272,10 +272,12 @@ WHILE 当前轮次 <= 最大轮次 AND 未达成一致:
      - 附上更新后的内容（计划/代码）
 
   3. 调用 codex MCP 工具（携带 SESSION_ID 继续对话）
+     调用完成后执行 `"$SESSION_MANAGER" touch-activity "$PWD"` 刷新活动时间
 
   4. 判断是否达成一致:
-     - Codex 响应包含 "APPROVE" -> 达成一致，退出循环
-     - Codex 响应无 [必须修改] 标记 -> 达成一致，退出循环
+     - Codex 响应包含明确的 "APPROVE" 关键词 -> 达成一致，退出循环
+     - Codex 响应包含 "REQUEST_CHANGES" -> 未达成一致，继续 battle
+     - Codex 响应既无 APPROVE 也无 REQUEST_CHANGES -> 格式异常，展示原始响应给用户确认
      - 否则 -> 当前轮次 + 1，继续 battle
 
 超过最大轮次: 输出分歧摘要，由用户最终裁决
@@ -313,10 +315,10 @@ WHILE 当前轮次 <= 最大轮次 AND 未达成一致:
 **Step 0: 会话新鲜度检测 & 周期初始化**
 ```bash
 # 清理过期周期
-$SESSION_MANAGER auto-cleanup $PWD 60
+"$SESSION_MANAGER" auto-cleanup "$PWD" 60
 
 # 创建新周期（如果没有活跃周期）
-CYCLE_DIR=$($SESSION_MANAGER cycle-init $PWD "用户功能描述或自动推断")
+CYCLE_DIR=$("$SESSION_MANAGER" cycle-init "$PWD" "用户功能描述或自动推断")
 ```
 - `cycle-init` 会检查是否已有活跃周期，有则返回现有周期目录，无则创建新周期
 - 创建新周期时自动触发旧周期清理（保留最近 5 个）
@@ -335,7 +337,7 @@ CYCLE_DIR=$($SESSION_MANAGER cycle-init $PWD "用户功能描述或自动推断"
 - `cycle-init` 已在 Step 0 创建了 `$CYCLE_DIR/sessions/` 目录，无需额外操作
 
 **Step 3: 读取项目背景**
-- 读取项目的 `.claude/CLAUDE.md` 获取技术栈和架构信息
+- 按优先级读取项目背景信息：先查 `$PWD/CLAUDE.md`，再查 `$PWD/.claude/CLAUDE.md`
 - 提取关键信息：技术栈、架构模式、编码规范
 
 **Step 4: 构造首轮 Prompt 并调用 Codex**
@@ -368,7 +370,7 @@ CYCLE_DIR=$($SESSION_MANAGER cycle-init $PWD "用户功能描述或自动推断"
 
 **Step 5: 提取 SESSION_ID 并保存**
 ```bash
-$SESSION_MANAGER save $PWD plan-review "<从响应中提取的session_id>"
+"$SESSION_MANAGER" save "$PWD" plan-review "<从响应中提取的session_id>"
 ```
 
 **Step 6: 解析 Codex 响应并进入 Battle**
@@ -396,7 +398,7 @@ $SESSION_MANAGER save $PWD plan-review "<从响应中提取的session_id>"
 - 向用户报告审查完成
 - 用户确认结果后，归档该阶段会话：
 ```bash
-$SESSION_MANAGER complete $PWD plan-review
+"$SESSION_MANAGER" complete "$PWD" plan-review
 ```
 
 ## 阶段二：代码审查 (`/review code`)
@@ -410,13 +412,13 @@ $SESSION_MANAGER complete $PWD plan-review
 
 **Step 0: 会话新鲜度检测**
 ```bash
-$SESSION_MANAGER auto-cleanup $PWD 60
+"$SESSION_MANAGER" auto-cleanup "$PWD" 60
 ```
 
 **Step 1: 检查前置条件并读取计划**
 - 确认存在活跃审查周期：
 ```bash
-CYCLE_DIR=$($SESSION_MANAGER cycle-current $PWD)
+CYCLE_DIR=$("$SESSION_MANAGER" cycle-current "$PWD")
 ```
 - 如果无活跃周期，提示用户先执行 `/review plan` 开始新的审查周期
 - 先读取 `$PWD/$DATA_DIR/config` 获取 `PLAN_DOC_DIR`，如果不存在则使用默认值 `doc`
@@ -427,10 +429,24 @@ CYCLE_DIR=$($SESSION_MANAGER cycle-current $PWD)
 - 如果 `$PLAN_DOC_DIR/` 版本比 `$CYCLE_DIR/plan.md` 更新，同步覆盖缓存
 
 **Step 2: 收集代码变更**
+
+先自动探测默认基线分支：
+1. `git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||'`
+2. 如果失败，尝试 `git remote show origin 2>/dev/null | grep 'HEAD branch' | awk '{print $NF}'`
+3. 如果仍失败（无 origin 或离线），依次检查本地是否存在 `main`、`master` 分支
+4. 如果都不存在，报错并提示用户手动指定基线分支
+
+收集完整差异（提交差异 + 工作区改动）：
 ```bash
-git diff master...HEAD
+# 提交差异（已提交的变更）
+git diff <base>...HEAD
+
+# 工作区差异（未暂存 + 已暂存的改动，如果有）
+git diff
+git diff --cached
 ```
-- 如果 diff 输出超过 8000 行，按文件分批处理
+- 将以上差异合并后发给 Codex
+- 如果合并后的 diff 输出超过 8000 行，按文件分批处理
 - 分批策略：按目录或模块分组，每批不超过 3000 行
 
 **Step 3: 读取共识计划**
@@ -465,15 +481,16 @@ git diff master...HEAD
 
 **Step 5: 提取 SESSION_ID 并保存**
 ```bash
-$SESSION_MANAGER save $PWD code-review "<从响应中提取的session_id>"
+"$SESSION_MANAGER" save "$PWD" code-review "<从响应中提取的session_id>"
 ```
 
 **Step 6: 解析响应并进入 Battle**
 - 按「自动 Battle 核心逻辑」进入循环（最多 5 轮）
 - **代码审查特殊规则**: 如果 CC 接受了代码修改意见，需要：
   1. 先实际修改代码文件
-  2. 重新执行 `git diff master...HEAD` 收集最新 diff
+  2. 重新收集完整差异（提交差异 + 工作区差异）
   3. 将修改说明 + 最新 diff 一起发给 Codex
+- 每轮 battle 处理完 Codex 响应后，调用 `"$SESSION_MANAGER" touch-activity "$PWD"` 刷新活动时间
 
 **Step 7: 记录审查结果**
 - 追加审查记录到 `$CYCLE_DIR/review-log.md`：
@@ -488,7 +505,7 @@ $SESSION_MANAGER save $PWD code-review "<从响应中提取的session_id>"
 
 - 用户确认结果后，归档该阶段会话：
 ```bash
-$SESSION_MANAGER complete $PWD code-review
+"$SESSION_MANAGER" complete "$PWD" code-review
 ```
 
 ## 阶段三：最终验收 (`/review final`)
@@ -502,18 +519,22 @@ $SESSION_MANAGER complete $PWD code-review
 
 **Step 0: 会话新鲜度检测**
 ```bash
-$SESSION_MANAGER auto-cleanup $PWD 60
+"$SESSION_MANAGER" auto-cleanup "$PWD" 60
 ```
 
 **Step 1: 收集完整变更**
+
+先自动探测默认基线分支（同阶段二 Step 2 的探测逻辑），然后收集完整差异：
 ```bash
-git diff master...HEAD
+git diff <base>...HEAD
+git diff
+git diff --cached
 ```
 
 **Step 2: 读取计划和历史审查日志**
 - 确认存在活跃审查周期：
 ```bash
-CYCLE_DIR=$($SESSION_MANAGER cycle-current $PWD)
+CYCLE_DIR=$("$SESSION_MANAGER" cycle-current "$PWD")
 ```
 - 如果无活跃周期，提示用户先执行 `/review plan` 开始新的审查周期
 - 先读取 `$PWD/$DATA_DIR/config` 获取 `PLAN_DOC_DIR`，如果不存在则使用默认值 `doc`
@@ -552,7 +573,7 @@ CYCLE_DIR=$($SESSION_MANAGER cycle-current $PWD)
 
 **Step 4: 提取 SESSION_ID 并保存**
 ```bash
-$SESSION_MANAGER save $PWD final-review "<从响应中提取的session_id>"
+"$SESSION_MANAGER" save "$PWD" final-review "<从响应中提取的session_id>"
 ```
 
 **Step 5: 进入 Battle 并输出验收报告**
@@ -569,7 +590,7 @@ $SESSION_MANAGER save $PWD final-review "<从响应中提取的session_id>"
 
 - 用户确认验收结果后，归档所有阶段会话（审查周期结束）：
 ```bash
-$SESSION_MANAGER complete-all $PWD
+"$SESSION_MANAGER" complete-all "$PWD"
 ```
 
 ## 异常处理
@@ -581,7 +602,7 @@ $SESSION_MANAGER complete-all $PWD
 ### SESSION_ID 失效
 - 当 Codex 返回 session 相关错误时，重置该阶段会话：
 ```bash
-$SESSION_MANAGER reset $PWD <phase>
+"$SESSION_MANAGER" reset "$PWD" <phase>
 ```
 - 重新开始该阶段审查（CC 端上下文仍在，只丢失 Codex 端历史）
 
@@ -590,7 +611,7 @@ $SESSION_MANAGER reset $PWD <phase>
 - 将原始响应展示给用户，由用户判断是否继续
 
 ### diff 过大
-- 如果 `git diff` 输出超过 8000 行，自动按模块分批
+- 如果合并后的 diff 输出超过 8000 行，自动按模块分批
 - 每批独立审查，最后汇总结果
 
 ## 用户交互规范

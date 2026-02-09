@@ -48,6 +48,7 @@ usage() {
     echo "  reset-all              重置所有阶段的会话"
     echo "  complete <phase>       归档指定阶段的会话"
     echo "  complete-all           归档所有会话并关闭当前周期"
+    echo "  touch-activity         刷新当前周期的活动时间戳"
     echo ""
     echo "周期管理:"
     echo "  cycle-init [描述]      创建新的审查周期"
@@ -88,13 +89,22 @@ read_current_cycle() {
     fi
 }
 
-# 获取当前周期的完整路径，不存在则返回空
+# 获取当前周期的完整路径，不存在或非 active 则返回空
 current_cycle_dir() {
     local root="$1"
     local cycle_name
     cycle_name=$(read_current_cycle "$root")
     if [[ -n "$cycle_name" && -d "${root}/${CYCLES_DIR}/${cycle_name}" ]]; then
-        echo "${root}/${CYCLES_DIR}/${cycle_name}"
+        # 验证周期状态为 active，防止在已关闭的周期上操作
+        local status
+        status=$(read_meta "${root}/${CYCLES_DIR}/${cycle_name}" "status")
+        if [[ "$status" == "active" ]]; then
+            echo "${root}/${CYCLES_DIR}/${cycle_name}"
+        else
+            # 指针指向非 active 周期，清理无效指针
+            rm -f "${root}/${POINTER_FILE}"
+            echo ""
+        fi
     else
         echo ""
     fi
@@ -147,6 +157,16 @@ touch_activity() {
     fi
 }
 
+# 获取文件修改时间（epoch 秒），用于 no-session 回退判断
+file_mtime() {
+    local file="$1"
+    if [[ "$(uname)" == "Darwin" ]]; then
+        stat -f %m "$file" 2>/dev/null || echo "0"
+    else
+        stat -c %Y "$file" 2>/dev/null || echo "0"
+    fi
+}
+
 # 读取 cycle.meta 中的字段值
 read_meta() {
     local cycle_dir="$1"
@@ -159,23 +179,18 @@ read_meta() {
     fi
 }
 
-# 写入/更新 cycle.meta 中的字段
+# 写入/更新 cycle.meta 中的字段（避免 sed 特殊字符转义问题）
 write_meta() {
     local cycle_dir="$1"
     local key="$2"
     local value="$3"
     local meta="${cycle_dir}/cycle.meta"
+    local tmp="${meta}.tmp"
 
-    if [[ -f "$meta" ]] && grep -q "^${key}=" "$meta" 2>/dev/null; then
-        # macOS 和 Linux 兼容的 sed -i
-        if [[ "$(uname)" == "Darwin" ]]; then
-            sed -i '' "s|^${key}=.*|${key}=${value}|" "$meta"
-        else
-            sed -i "s|^${key}=.*|${key}=${value}|" "$meta"
-        fi
-    else
-        echo "${key}=${value}" >> "$meta"
-    fi
+    # 删除旧行（grep -v 无匹配时返回 1，用 || true 防止 set -e 退出）
+    { grep -v "^${key}=" "$meta" 2>/dev/null || true; } > "$tmp"
+    echo "${key}=${value}" >> "$tmp"
+    mv "$tmp" "$meta"
 }
 
 # ========== 周期管理 ==========
@@ -196,7 +211,7 @@ do_cycle_init() {
         local status
         status=$(read_meta "${root}/${CYCLES_DIR}/${current}" "status")
         if [[ "$status" == "active" ]]; then
-            echo -e "${YELLOW}当前已有活跃周期: ${current}${NC}"
+            echo -e "${YELLOW}当前已有活跃周期: ${current}${NC}" >&2
             echo "${root}/${CYCLES_DIR}/${current}"
             return 0
         fi
@@ -217,9 +232,12 @@ METAEOF
     mkdir -p "${root}/${DATA_DIR}"
     echo "$cycle_name" > "${root}/${POINTER_FILE}"
 
-    echo -e "${GREEN}已创建新审查周期: ${cycle_name}${NC}"
+    # 写入初始活动时间戳（防止 no-session 僵尸周期）
+    touch_activity "$root"
+
+    echo -e "${GREEN}已创建新审查周期: ${cycle_name}${NC}" >&2
     if [[ -n "$description" ]]; then
-        echo -e "${GREEN}  描述: ${description}${NC}"
+        echo -e "${GREEN}  描述: ${description}${NC}" >&2
     fi
 
     # 创建新周期后自动清理旧周期
@@ -314,7 +332,7 @@ do_cycle_cleanup() {
     done
 
     if [[ $deleted -gt 0 ]]; then
-        echo -e "${YELLOW}已清理 ${deleted} 个旧周期（保留最近 ${keep_count} 个）${NC}"
+        echo -e "${YELLOW}已清理 ${deleted} 个旧周期（保留最近 ${keep_count} 个）${NC}" >&2
     fi
 }
 
@@ -364,7 +382,7 @@ do_save() {
 
     echo "$sid" > "${cdir}/sessions/${phase}.session"
     touch_activity "$root"
-    echo -e "${GREEN}已保存 ${phase} 的 SESSION_ID${NC}"
+    echo -e "${GREEN}已保存 ${phase} 的 SESSION_ID${NC}" >&2
 }
 
 do_reset() {
@@ -377,9 +395,9 @@ do_reset() {
 
     if [[ -n "$file" && -f "$file" ]]; then
         rm "$file"
-        echo -e "${YELLOW}已重置 ${phase} 的会话${NC}"
+        echo -e "${YELLOW}已重置 ${phase} 的会话${NC}" >&2
     else
-        echo -e "${YELLOW}${phase} 无活跃会话${NC}"
+        echo -e "${YELLOW}${phase} 无活跃会话${NC}" >&2
     fi
 }
 
@@ -390,9 +408,9 @@ do_reset_all() {
 
     if [[ -n "$sdir" && -d "$sdir" ]]; then
         rm -f "${sdir}"/*.session
-        echo -e "${YELLOW}已重置所有阶段的会话${NC}"
+        echo -e "${YELLOW}已重置所有阶段的会话${NC}" >&2
     else
-        echo -e "${YELLOW}无活跃会话${NC}"
+        echo -e "${YELLOW}无活跃会话${NC}" >&2
     fi
 }
 
@@ -408,9 +426,9 @@ do_complete() {
         local timestamp
         timestamp=$(date "+%Y%m%d-%H%M%S")
         mv "$file" "${file%.session}.${timestamp}.archived"
-        echo -e "${GREEN}已归档 ${phase} 的会话${NC}"
+        echo -e "${GREEN}已归档 ${phase} 的会话${NC}" >&2
     else
-        echo -e "${YELLOW}${phase} 无活跃会话，跳过归档${NC}"
+        echo -e "${YELLOW}${phase} 无活跃会话，跳过归档${NC}" >&2
     fi
 }
 
@@ -420,7 +438,7 @@ do_complete_all() {
     cdir=$(current_cycle_dir "$root")
 
     if [[ -z "$cdir" ]]; then
-        echo -e "${YELLOW}无活跃周期${NC}"
+        echo -e "${YELLOW}无活跃周期${NC}" >&2
         return 0
     fi
 
@@ -436,7 +454,7 @@ do_complete_all() {
             local file="${sdir}/${phase}.session"
             if [[ -f "$file" ]]; then
                 mv "$file" "${file%.session}.${timestamp}.archived"
-                echo -e "${GREEN}  已归档 ${phase}${NC}"
+                echo -e "${GREEN}  已归档 ${phase}${NC}" >&2
                 archived=$((archived + 1))
             fi
         done
@@ -449,7 +467,7 @@ do_complete_all() {
     # 清除指针
     rm -f "${root}/${POINTER_FILE}"
 
-    echo -e "${GREEN}审查周期已关闭（归档 ${archived} 个会话）${NC}"
+    echo -e "${GREEN}审查周期已关闭（归档 ${archived} 个会话）${NC}" >&2
 }
 
 # ========== 过期检测（基于当前周期） ==========
@@ -467,6 +485,13 @@ do_check_stale() {
 
     local last_ts now_ts diff_seconds diff_minutes
     last_ts=$(cat "$afile")
+
+    # 整数校验：防止损坏的时间戳导致算术错误
+    if [[ ! "$last_ts" =~ ^[0-9]+$ ]]; then
+        echo "no-session"
+        return 2
+    fi
+
     now_ts=$(date +%s)
     diff_seconds=$((now_ts - last_ts))
     diff_minutes=$((diff_seconds / 60))
@@ -497,8 +522,26 @@ do_auto_cleanup() {
     local result exit_code
     result=$(do_check_stale "$root" "$threshold_minutes") && exit_code=$? || exit_code=$?
 
-    # 无记录或仍活跃
-    if [[ $exit_code -ne 0 ]]; then
+    # no-session: 回退到 cycle.meta 文件修改时间判断
+    if [[ $exit_code -eq 2 ]]; then
+        local meta_file="${cdir}/cycle.meta"
+        if [[ -f "$meta_file" ]]; then
+            local meta_ts now_ts diff_minutes
+            meta_ts=$(file_mtime "$meta_file")
+            now_ts=$(date +%s)
+            diff_minutes=$(( (now_ts - meta_ts) / 60 ))
+            if [[ $diff_minutes -ge $threshold_minutes ]]; then
+                echo -e "${YELLOW}检测到过期周期（无活动记录，元数据已闲置 ${diff_minutes} 分钟）${NC}" >&2
+                write_meta "$cdir" "status" "abandoned"
+                rm -f "${root}/${POINTER_FILE}"
+                echo -e "${YELLOW}已标记为 abandoned，下次审查将创建新周期${NC}" >&2
+            fi
+        fi
+        return 0
+    fi
+
+    # 仍活跃
+    if [[ $exit_code -eq 1 ]]; then
         return 0
     fi
 
@@ -507,10 +550,10 @@ do_auto_cleanup() {
     minutes=$(echo "$result" | cut -d'|' -f2)
     last_time=$(echo "$result" | cut -d'|' -f3)
 
-    echo -e "${YELLOW}检测到过期周期（上次活动: ${last_time}，已闲置 ${minutes} 分钟）${NC}"
+    echo -e "${YELLOW}检测到过期周期（上次活动: ${last_time}，已闲置 ${minutes} 分钟）${NC}" >&2
     write_meta "$cdir" "status" "abandoned"
     rm -f "${root}/${POINTER_FILE}"
-    echo -e "${YELLOW}已标记为 abandoned，下次审查将创建新周期${NC}"
+    echo -e "${YELLOW}已标记为 abandoned，下次审查将创建新周期${NC}" >&2
 }
 
 # ========== 状态展示 ==========
@@ -629,6 +672,9 @@ case "$ACTION" in
         ;;
     complete-all)
         do_complete_all "$PROJECT_ROOT"
+        ;;
+    touch-activity)
+        touch_activity "$PROJECT_ROOT"
         ;;
     check-stale)
         do_check_stale "$PROJECT_ROOT" "$PHASE"
