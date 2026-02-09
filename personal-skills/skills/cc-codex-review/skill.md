@@ -59,11 +59,34 @@ description: "CC-Codex 协作审查。让 Codex 审查计划、审查代码、�
 SESSION_MANAGER=~/.claude/skills/cc-codex-review/scripts/session-manager.sh
 DATA_DIR=.cc-codex
 CONFIG_FILE=$DATA_DIR/config
+CYCLES_DIR=$DATA_DIR/cycles
+POINTER_FILE=$DATA_DIR/current-cycle
 PLAN_DOC_DIR=doc              # 默认值，可由用户动态指定
 MAX_PLAN_ROUNDS=5
 MAX_CODE_ROUNDS=5
 MAX_FINAL_ROUNDS=3
 ```
+
+### 数据目录结构
+
+```
+.cc-codex/
+├── config                    # 全局配置（PLAN_DOC_DIR 等，持久化）
+├── current-cycle             # 纯文本指针，内容为当前活跃周期目录名
+└── cycles/
+    └── 20260209-143000/      # 一个审查周期
+        ├── plan.md           # 本周期的共识计划
+        ├── review-log.md     # 本周期的审查日志
+        ├── cycle.meta        # 元数据（status/description/created_at/completed_at）
+        └── sessions/
+            ├── plan-review.session
+            ├── code-review.session
+            ├── final-review.session
+            ├── .last-activity
+            └── *.archived    # 归档的会话文件
+```
+
+`CYCLE_DIR` 表示当前活跃周期的完整路径，通过 `$SESSION_MANAGER cycle-current $PWD` 获取。所有计划、日志、会话文件均在 `CYCLE_DIR` 内。
 
 ## 项目根目录识别
 
@@ -92,9 +115,9 @@ PLAN_DOC_DIR=<用户指定的相对路径>
 
 解析用户输入的 `/review` 命令参数，路由到对应处理流程：
 
-1. **`/review plan`** -> 执行「阶段一：计划审查」
-2. **`/review code`** -> 执行「阶段二：代码审查」
-3. **`/review final`** -> 执行「阶段三：最终验收」
+1. **`/review plan`** -> 执行「阶段一：计划审查」（同时创建新审查周期）
+2. **`/review code`** -> 执行「阶段二：代码审查」（要求已有活跃周期）
+3. **`/review final`** -> 执行「阶段三：最终验收」（要求已有活跃周期）
 4. **`/review status`** -> 执行 `$SESSION_MANAGER status $PWD`，展示结果
 5. **`/review reset plan`** -> 执行 `$SESSION_MANAGER reset $PWD plan-review`
 6. **`/review reset code`** -> 执行 `$SESSION_MANAGER reset $PWD code-review`
@@ -155,6 +178,28 @@ $SESSION_MANAGER save $PWD plan-review "<session_id>"
 
 ## 会话生命周期管理
 
+### 审查周期（Review Cycle）
+
+每次 `/review plan` 启动时，如果没有活跃周期，自动创建新的审查周期。一个周期内的所有阶段（plan/code/final）共享同一个周期目录，计划文档和审查日志隔离在周期内。
+
+**周期状态：**
+- `active`: 正在进行的审查周期（同一时刻只有一个）
+- `completed`: 正常完成的周期（final review 通过或 complete-all）
+- `abandoned`: 超时未完成被自动标记的周期
+
+**周期生命流程：**
+```
+/review plan（无活跃周期）
+  → cycle-init 创建新周期（status=active）
+  → 进行 plan/code/final 审查
+  → complete-all 关闭周期（status=completed，清除指针）
+
+下次 /review plan
+  → auto-cleanup 检测过期周期（如有残留 active 超过 60 分钟 → abandoned）
+  → cycle-init 创建新周期
+  → cycle-cleanup 自动清理旧周期（保留最近 5 个）
+```
+
 ### 主动归档（正常流程）
 
 每个审查阶段完成并与用户确认结果后，主动归档该阶段的 Codex session：
@@ -163,11 +208,12 @@ $SESSION_MANAGER save $PWD plan-review "<session_id>"
 # 单阶段归档
 $SESSION_MANAGER complete $PWD plan-review
 
-# 整个审查周期结束时归档所有阶段
+# 整个审查周期结束时归档所有阶段并关闭周期
 $SESSION_MANAGER complete-all $PWD
 ```
 
 - `complete` 将 `.session` 文件重命名为 `.archived`（带时间戳），保留历史记录
+- `complete-all` 归档所有会话 + 标记周期为 completed + 清除 current-cycle 指针
 - 归档后 `read` 返回空值，下次审查自动从头开始
 - 在阶段一/二的最后步骤中归档当前阶段；在阶段三（最终验收）完成后调用 `complete-all` 归档所有阶段
 
@@ -175,16 +221,28 @@ $SESSION_MANAGER complete-all $PWD
 
 防止 CC 会话中途崩溃、未走到确认步骤时遗留脏数据：
 
-**检测时机：** 在阶段一/二/三的 Step 1 之前自动执行。
+**检测时机：** 在阶段一/二/三的 Step 0 自动执行。
 
 **检测逻辑：**
 ```bash
 $SESSION_MANAGER auto-cleanup $PWD 60
 ```
 
-- 如果距离上次审查活动超过 60 分钟且仍有未归档的活跃会话，自动重置
+- 如果距离上次审查活动超过 60 分钟且仍有未归档的活跃周期，标记为 abandoned 并清除指针
 - 重置后通知用户："检测到上次审查已结束（上次活动: [时间]），已自动清理旧会话，开始新的审查周期"
-- 如果无历史会话或会话仍在活跃期内，静默跳过
+- 如果无活跃周期或仍在活跃期内，静默跳过
+
+### 周期自动清理
+
+旧的 completed/abandoned 周期目录会在创建新周期时自动清理：
+
+```bash
+$SESSION_MANAGER cycle-cleanup $PWD 5
+```
+
+- 保留最近 5 个非活跃周期，超出部分直接删除
+- 至少保留 1 个 completed 周期（如果存在）
+- 在 `cycle-init` 内自动触发，无需手动执行
 
 **活动时间更新：**
 - 每次保存 SESSION_ID 时自动更新活动时间戳（`session-manager.sh save` 内置）
@@ -252,25 +310,29 @@ WHILE 当前轮次 <= 最大轮次 AND 未达成一致:
 
 ### 执行步骤
 
-**Step 0: 会话新鲜度检测**
+**Step 0: 会话新鲜度检测 & 周期初始化**
 ```bash
+# 清理过期周期
 $SESSION_MANAGER auto-cleanup $PWD 60
+
+# 创建新周期（如果没有活跃周期）
+CYCLE_DIR=$($SESSION_MANAGER cycle-init $PWD "用户功能描述或自动推断")
 ```
+- `cycle-init` 会检查是否已有活跃周期，有则返回现有周期目录，无则创建新周期
+- 创建新周期时自动触发旧周期清理（保留最近 5 个）
 
 **Step 1: 确定计划文档目录并收集计划内容**
 - 先读取 `$PWD/$DATA_DIR/config` 获取 `PLAN_DOC_DIR`，如果不存在则使用默认值 `doc`
 - 按以下优先级查找计划文档：
   1. `$PWD/$PLAN_DOC_DIR/` 目录下最近修改的 `.md` 文件（用户可见的计划文档）
   2. 当前对话上下文中已生成的计划内容
-  3. `$PWD/.cc-codex/plan.md`（内部缓存）
+  3. `$CYCLE_DIR/plan.md`（周期内缓存）
 - 如果 `$PWD/$PLAN_DOC_DIR/` 目录不存在或为空，询问用户指定计划文档目录，保存到 config
 - 如果都没有，报错退出并提示用户先生成计划
-- 找到后，将计划内容同步缓存到 `$PWD/.cc-codex/plan.md`（供后续阶段引用）
+- 找到后，将计划内容同步缓存到 `$CYCLE_DIR/plan.md`（供后续阶段引用）
 
-**Step 2: 初始化审查目录**
-```bash
-mkdir -p $PWD/.cc-codex/sessions
-```
+**Step 2: 确认周期目录就绪**
+- `cycle-init` 已在 Step 0 创建了 `$CYCLE_DIR/sessions/` 目录，无需额外操作
 
 **Step 3: 读取项目背景**
 - 读取项目的 `.claude/CLAUDE.md` 获取技术栈和架构信息
@@ -317,12 +379,12 @@ $SESSION_MANAGER save $PWD plan-review "<从响应中提取的session_id>"
 
 **Step 7: 保存共识计划**
 - 达成一致后：
-  1. 将最终计划缓存到 `$PWD/.cc-codex/plan.md`（内部引用）
+  1. 将最终计划缓存到 `$CYCLE_DIR/plan.md`（周期内引用）
   2. 同步更新 `$PWD/$PLAN_DOC_DIR/` 下对应的计划文档（用户可见版本）
      - 如果 Step 1 中计划来源是 `$PLAN_DOC_DIR/` 下的某个文件，则更新该文件
      - 否则，创建 `$PWD/$PLAN_DOC_DIR/<功能名称>-实施计划.md`
-  3. 追加审查记录到 `$PWD/.cc-codex/review-log.md`
-- 追加审查记录到 `$PWD/.cc-codex/review-log.md`，格式：
+  3. 追加审查记录到 `$CYCLE_DIR/review-log.md`
+- 追加审查记录到 `$CYCLE_DIR/review-log.md`，格式：
 
 ```markdown
 ## 计划审查 - [日期时间]
@@ -340,7 +402,8 @@ $SESSION_MANAGER complete $PWD plan-review
 ## 阶段二：代码审查 (`/review code`)
 
 ### 前置条件
-- 已存在共识计划（`$PLAN_DOC_DIR/` 或 `.cc-codex/plan.md`）
+- 已存在活跃审查周期（通过 `/review plan` 创建）
+- 已存在共识计划（`$PLAN_DOC_DIR/` 或 `$CYCLE_DIR/plan.md`）
 - CC 已完成一个阶段的代码编写
 
 ### 执行步骤
@@ -351,12 +414,17 @@ $SESSION_MANAGER auto-cleanup $PWD 60
 ```
 
 **Step 1: 检查前置条件并读取计划**
+- 确认存在活跃审查周期：
+```bash
+CYCLE_DIR=$($SESSION_MANAGER cycle-current $PWD)
+```
+- 如果无活跃周期，提示用户先执行 `/review plan` 开始新的审查周期
 - 先读取 `$PWD/$DATA_DIR/config` 获取 `PLAN_DOC_DIR`，如果不存在则使用默认值 `doc`
 - 按以下优先级查找计划：
   1. `$PWD/$PLAN_DOC_DIR/` 下的计划文档（用户可能手动修改过）
-  2. `$PWD/.cc-codex/plan.md`（内部缓存）
+  2. `$CYCLE_DIR/plan.md`（周期内缓存）
 - 如果都不存在，提示用户先执行 `/review plan`
-- 如果 `$PLAN_DOC_DIR/` 版本比 `.cc-codex/plan.md` 更新，同步覆盖缓存
+- 如果 `$PLAN_DOC_DIR/` 版本比 `$CYCLE_DIR/plan.md` 更新，同步覆盖缓存
 
 **Step 2: 收集代码变更**
 ```bash
@@ -366,7 +434,7 @@ git diff master...HEAD
 - 分批策略：按目录或模块分组，每批不超过 3000 行
 
 **Step 3: 读取共识计划**
-- 读取 `$PWD/.cc-codex/plan.md` 内容
+- 读取 `$CYCLE_DIR/plan.md` 内容
 
 **Step 4: 构造首轮 Prompt 并调用 Codex**
 
@@ -408,7 +476,7 @@ $SESSION_MANAGER save $PWD code-review "<从响应中提取的session_id>"
   3. 将修改说明 + 最新 diff 一起发给 Codex
 
 **Step 7: 记录审查结果**
-- 追加审查记录到 `$PWD/.cc-codex/review-log.md`：
+- 追加审查记录到 `$CYCLE_DIR/review-log.md`：
 
 ```markdown
 ## 代码审查 - [日期时间]
@@ -426,6 +494,7 @@ $SESSION_MANAGER complete $PWD code-review
 ## 阶段三：最终验收 (`/review final`)
 
 ### 前置条件
+- 已存在活跃审查周期（通过 `/review plan` 创建）
 - 所有代码编写完成
 - 建议已完成代码审查（非强制）
 
@@ -442,12 +511,17 @@ git diff master...HEAD
 ```
 
 **Step 2: 读取计划和历史审查日志**
+- 确认存在活跃审查周期：
+```bash
+CYCLE_DIR=$($SESSION_MANAGER cycle-current $PWD)
+```
+- 如果无活跃周期，提示用户先执行 `/review plan` 开始新的审查周期
 - 先读取 `$PWD/$DATA_DIR/config` 获取 `PLAN_DOC_DIR`，如果不存在则使用默认值 `doc`
 - 按以下优先级查找计划：
   1. `$PWD/$PLAN_DOC_DIR/` 下的计划文档（用户可能手动修改过，以此为准）
-  2. `$PWD/.cc-codex/plan.md`（内部缓存）
-- 如果 `$PLAN_DOC_DIR/` 版本比 `.cc-codex/plan.md` 更新，同步覆盖缓存
-- 读取 `$PWD/.cc-codex/review-log.md`（如果存在）
+  2. `$CYCLE_DIR/plan.md`（周期内缓存）
+- 如果 `$PLAN_DOC_DIR/` 版本比 `$CYCLE_DIR/plan.md` 更新，同步覆盖缓存
+- 读取 `$CYCLE_DIR/review-log.md`（如果存在）
 
 **Step 3: 构造验收 Prompt 并调用 Codex**
 
@@ -483,7 +557,7 @@ $SESSION_MANAGER save $PWD final-review "<从响应中提取的session_id>"
 
 **Step 5: 进入 Battle 并输出验收报告**
 - 按「自动 Battle 核心逻辑」进入循环（最多 3 轮，更严格）
-- 达成一致后，生成验收报告并追加到 `$PWD/.cc-codex/review-log.md`：
+- 达成一致后，生成验收报告并追加到 `$CYCLE_DIR/review-log.md`：
 
 ```markdown
 ## 最终验收 - [日期时间]
