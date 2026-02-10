@@ -38,6 +38,14 @@ if command -v brew &>/dev/null; then
         echo "  - Python 3 已安装, 跳过"
     fi
 
+    # drawio skill 依赖（MCP 通过 npx 运行）
+    if ! command -v node &>/dev/null; then
+        echo "  - 安装 Node.js..."
+        brew install node
+    else
+        echo "  - Node.js 已安装, 跳过"
+    fi
+
     # hooks/notify.sh 依赖
     if ! command -v jq &>/dev/null; then
         echo "  - 安装 jq..."

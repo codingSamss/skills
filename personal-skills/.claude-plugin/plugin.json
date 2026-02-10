@@ -1,6 +1,6 @@
 {
   "name": "personal-skills",
-  "description": "个人 Claude Code 技能集合：Twitter阅读、安全提交、截图分析、插件管理、UI/UX设计、Codex协作审查等",
+  "description": "个人 Claude Code 技能集合：Twitter阅读、安全提交、截图分析、插件管理、UI/UX设计、Codex协作审查、draw.io图表生成等",
   "version": "1.0.0",
   "author": { "name": "codingSamss" },
   "repository": "https://github.com/codingSamss/skills",
