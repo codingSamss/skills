@@ -27,7 +27,6 @@ skills/
     ├── hooks/                    # Hook scripts
     │   └── notify.sh
     └── agents/                   # Agent configs
-        ├── code-review-expert.md
         └── tech-research-advisor.md
 ```
 
