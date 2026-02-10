@@ -4,11 +4,6 @@
       "type": "stdio",
       "command": "uvx",
       "args": ["--from", "git+https://github.com/GuDaStudio/codexmcp.git", "codexmcp"]
-    },
-    "drawio": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@drawio/mcp"]
     }
   }
 }
