@@ -124,10 +124,26 @@ ToolSearch query: "select:mcp__codex__codex"
    ```
 5. 进入 Battle Loop（从 current_round 继续）
 
+### 角色选择规则
+
+构造 Prompt 前，按以下步骤确定角色文案：
+
+1. **归一化**: 检查输入 JSON 中的 `topic_type` 字段。若为空或不在已知列表（code-implementation, architecture-design, bug-analysis, technical-decision, open-discussion）中，默认按 `open-discussion` 处理，并在 summary.md 中记录告警："topic_type 归一化: 原始值 '<原始值>' 不在已知列表，已降级为 open-discussion"。
+
+2. **选择角色文案**: 根据归一化后的 topic_type 查表：
+
+| topic_type 分类 | 角色行 | 目标行 |
+|---|---|---|
+| 技术类（code-implementation, architecture-design, bug-analysis, technical-decision） | 你是一位资深技术专家，正在与另一位工程师（Claude Code）进行讨论。 | 你的目标是通过讨论形成可执行结论与取舍依据。 |
+| 通用类（open-discussion） | 你是一位资深专家，正在与另一位工程师（Claude Code）进行讨论。 | 你的目标是通过讨论形成可执行结论与取舍依据。可讨论非技术议题，优先通用决策框架。 |
+
+3. **注入模板**: 将选定的 `[角色行]` 和 `[目标行]` 替换到 NEW 或 REBUILD 模板的对应占位符中。
+
 ### 初始 Prompt 模板
 
 ```
-你是一位资深专家，正在与另一位工程师（Claude Code）进行讨论。
+[角色行]
+[目标行]
 
 ## 话题
 [话题标题和描述]
@@ -150,7 +166,9 @@ ToolSearch query: "select:mcp__codex__codex"
 ### REBUILD 模式 Prompt 模板
 
 ```
-你是一位资深专家，正在与另一位工程师（Claude Code）进行讨论。这是一个恢复的会话，以下是之前讨论的摘要：
+[角色行]
+[目标行]
+这是一个恢复的会话，以下是之前讨论的摘要：
 
 ## 之前的讨论进展
 [summary.md 的完整内容]
