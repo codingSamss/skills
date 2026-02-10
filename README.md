@@ -7,18 +7,15 @@
 | Skill | 功能 | 外部依赖 |
 |-------|------|---------|
 | bird-twitter | 通过 Bird CLI 阅读 X/Twitter 内容 | Bird CLI |
-| committer | 安全的 git 提交辅助 | Git, scripts/committer |
-| cc-codex-review | CC-Codex 协作审查 | Codex MCP |
+| cc-codex-review | CC-Codex 协作讨论 | Codex MCP |
 | peekaboo | macOS 截图与视觉分析 | Peekaboo |
 | plugin-manager | Claude Code 插件管理 | - |
-| json-canvas | JSON Canvas 文件编辑 | - |
 | ui-ux-pro-max | UI/UX 设计智能助手 | Python 3 |
 
 ## 其他组件
 
-- **scripts/committer** - committer skill 的外部脚本
 - **hooks/notify.sh** - 任务完成通知 hook
-- **agents/** - 自定义 agent 配置（code-review-expert, tech-research-advisor）
+- **agents/** - 自定义 agent 配置（codex-battle-agent, tech-research-advisor）
 
 ## 安装
 
@@ -52,7 +49,7 @@ cd skills
 1. 安装 [Claude Code](https://claude.ai/code)
 2. 克隆本仓库或通过插件系统安装
 3. 运行 `./setup.sh` 安装外部依赖（Homebrew 工具）并创建符号链接
-4. 启动 Claude Code，测试各 skill（如 `/bird-twitter`、`/committer`）
+4. 启动 Claude Code，测试各 skill（如 `/bird-twitter`、`/cc-codex-review`）
 
 ## 外部依赖
 

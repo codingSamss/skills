@@ -17,13 +17,11 @@ skills/
     ├── .mcp.json                 # MCP server config (codex)
     ├── skills/                   # All skills
     │   ├── bird-twitter/
-    │   ├── committer/
     │   ├── cc-codex-review/
     │   ├── peekaboo/
     │   ├── plugin-manager/
     │   └── ui-ux-pro-max/
     ├── scripts/                  # External scripts
-    │   └── committer
     ├── hooks/                    # Hook scripts
     │   └── notify.sh
     └── agents/                   # Agent configs
@@ -56,7 +54,6 @@ Instructions for Claude...
 |---|---|---|
 | bird-twitter | Bird CLI (`brew install steipete/tap/bird`) | - |
 | peekaboo | Peekaboo (`brew install steipete/tap/peekaboo`) | - |
-| committer | Git, `scripts/committer` | Bash |
 | cc-codex-review | Codex MCP server | Python (`scripts/topic-manager.py`) |
 | plugin-manager | Claude Code plugin system | Bash (`scripts/`) |
 | ui-ux-pro-max | Python 3 | Python (`scripts/search.py`, `scripts/core.py`) |

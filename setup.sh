@@ -12,7 +12,7 @@ echo ""
 
 # --- 1. Homebrew 工具 ---
 if command -v brew &>/dev/null; then
-    echo "[1/4] 安装 Homebrew 依赖..."
+    echo "[1/3] 安装 Homebrew 依赖..."
 
     # bird-twitter skill 依赖
     if ! command -v bird &>/dev/null; then
@@ -46,30 +46,22 @@ if command -v brew &>/dev/null; then
         echo "  - jq 已安装, 跳过"
     fi
 else
-    echo "[1/4] Homebrew 未安装, 跳过工具安装"
+    echo "[1/3] Homebrew 未安装, 跳过工具安装"
     echo "  请手动安装: bird, peekaboo, python3, jq"
 fi
 
 echo ""
 
-# --- 2. 符号链接: scripts/committer ---
-echo "[2/4] 链接 scripts/committer -> ~/.claude/scripts/committer"
-mkdir -p ~/.claude/scripts
-ln -sf "$PLUGIN_DIR/scripts/committer" ~/.claude/scripts/committer
-echo "  done"
-
-echo ""
-
-# --- 3. 符号链接: hooks/notify.sh ---
-echo "[3/4] 链接 hooks/notify.sh -> ~/.claude/hooks/notify.sh"
+# --- 2. 符号链接: hooks/notify.sh ---
+echo "[2/3] 链接 hooks/notify.sh -> ~/.claude/hooks/notify.sh"
 mkdir -p ~/.claude/hooks
 ln -sf "$PLUGIN_DIR/hooks/notify.sh" ~/.claude/hooks/notify.sh
 echo "  done"
 
 echo ""
 
-# --- 4. 符号链接: agents ---
-echo "[4/4] 链接 agents -> ~/.claude/agents/"
+# --- 3. 符号链接: agents ---
+echo "[3/3] 链接 agents -> ~/.claude/agents/"
 mkdir -p ~/.claude/agents
 for agent in "$PLUGIN_DIR"/agents/*.md; do
     name="$(basename "$agent")"
