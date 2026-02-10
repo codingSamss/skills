@@ -7,6 +7,8 @@ description: "CC-Codex 协作讨论。自由话题驱动的 CC-Codex 协作工�
 
 通过 CodexMCP 实现 Claude Code 与 Codex 的话题驱动协作讨论工具。支持自由话题、Battle Loop 辩论机制和跨会话连续性。
 
+本 Skill 为薄触发层，负责命令路由、初始化和上下文收集。Battle Loop 执行逻辑委托给 `codex-battle-agent`。
+
 ## 触发条件
 
 ### 命令触发
@@ -66,34 +68,6 @@ CC 根据用户话题内容自动分类：
 4. **`/cc-codex-review 状态`** -> 执行 `python3 "$TOPIC_MANAGER" status "$PWD"` 并格式化展示
 5. **`/cc-codex-review 重置`** -> 需用户确认后，将 session_id 设为 null（保留 summary.md）
 
-## Codex MCP 工具调用规范
-
-**首次调用（无 session_id）：**
-```
-工具: codex
-参数:
-  prompt: <构造的讨论 Prompt>
-  sandbox: "read-only"
-  return_all_messages: false
-```
-
-**后续调用（有 session_id）：**
-```
-工具: codex
-参数:
-  prompt: <构造的回复 Prompt>
-  session_id: <已保存的 session_id>
-  sandbox: "read-only"
-  return_all_messages: false
-```
-
-**Debug 模式（用户主动要求时开启）：**
-- 用户说"debug 模式"/"查看交互过程"/"显示完整对话"时，将 `return_all_messages` 设为 `true`
-
-**从响应中提取 SESSION_ID：**
-- Codex 响应 JSON 中的 `SESSION_ID` 字段（大写）
-- 首次调用后必须提取并保存
-
 ## 新会话初始化流程
 
 每次 CC 新会话启动、用户触发 `/cc-codex-review` 相关命令时，先执行初始化：
@@ -111,13 +85,17 @@ CC 根据用户话题内容自动分类：
 
 ## 讨论启动流程（`/cc-codex-review <topic>`）
 
-**Step 1: 创建话题**
+### Step 1: 创建话题
+
 ```bash
 # CC 自动分类话题类型（或用户指定）
 python3 "$TOPIC_MANAGER" topic-create "$PWD" "<话题标题>" "<类型>"
 ```
 
-**Step 2: 收集上下文**
+从返回的 JSON 中提取 `topic_id`。
+
+### Step 2: 收集上下文
+
 - 读取项目背景：先查 `$PWD/CLAUDE.md`，再查 `$PWD/.claude/CLAUDE.md`
 - 根据话题类型收集相关素材：
   - `code-implementation`: git diff、相关源码
@@ -126,100 +104,166 @@ python3 "$TOPIC_MANAGER" topic-create "$PWD" "<话题标题>" "<类型>"
   - `technical-decision`: 备选方案描述
   - `open-discussion`: 用户提供的素材
 
-**Step 3: 构造 Prompt 并调用 Codex**
+### Step 3: 写入 context-bundle.md
 
-根据话题类型使用不同角色设定，但共享统一的输出格式要求：
+将收集到的所有上下文写入一个文件，供 Agent 读取：
 
-```
-你是一位资深技术专家，正在与另一位工程师（CC）进行技术讨论。
+路径：`$PWD/.cc-codex/topics/<topic_id>/context-bundle.md`
+
+```markdown
+# Context Bundle
 
 ## 话题
-[话题标题和描述]
+<话题标题和描述>
 
 ## 项目背景
-[从 CLAUDE.md 提取的信息摘要]
+<从 CLAUDE.md 提取的信息摘要>
 
 ## 讨论素材
-[收集到的上下文内容]
-
-## 讨论要求
-请从你的专业角度分析这个话题，提出你的观点和建议。
-
-## 输出格式要求
-- 每条意见标注优先级：[必须修改] / [建议优化] / [疑问]
-- 最终给出结论：APPROVE（同意当前方案）或 REQUEST_CHANGES（需要调整）
-- 如果 REQUEST_CHANGES，列出所有 [必须修改] 项
+<收集到的上下文内容>
 ```
 
-**Step 4: 提取 SESSION_ID 并保存**
+### Step 4: 构造参数并 spawn Agent
+
+```
+调用 Task tool:
+  subagent_type: codex-battle-agent
+  description: "CC-Codex Battle Loop"
+  mode: bypassPermissions
+  prompt: |
+    执行 CC-Codex Battle Loop。配置如下：
+
+    ```json
+    {
+      "mode": "NEW",
+      "topic_id": "<topic_id>",
+      "topic_title": "<话题标题>",
+      "topic_type": "<话题类型>",
+      "session_id": null,
+      "workdir": "<$PWD>",
+      "max_rounds": 5,
+      "current_round": 1,
+      "context_bundle_path": ".cc-codex/topics/<topic_id>/context-bundle.md",
+      "artifact_type": "<根据话题类型映射的制品文件名>",
+      "debug": false
+    }
+    ```
+
+    context-bundle 路径: .cc-codex/topics/<topic_id>/context-bundle.md
+```
+
+### Step 5: 接收结果并完成
+
+1. 解析 Agent 返回的 JSON 结果
+2. 完成话题：`python3 "$TOPIC_MANAGER" topic-complete "$PWD"`
+3. 如果话题有 output_dir，将制品从 artifacts/ 复制到用户指定目录
+4. 向用户展示结论（见下方展示格式）
+
+## 跨会话恢复策略
+
+- **主路径**：使用保存的 session_id 恢复 Codex 会话（CONTINUE 模式）
+- **备路径**：session_id 失效时，基于 summary.md 重建上下文（REBUILD 模式）
+- 模式判断由 Skill 层完成，执行由 Agent 层负责
+
+## 继续讨论流程（`/cc-codex-review 继续`）
+
+### Step 1: 读取活跃话题
+
 ```bash
-python3 "$TOPIC_MANAGER" topic-update "$PWD" session_id "<从响应中提取的session_id>"
-python3 "$TOPIC_MANAGER" topic-update "$PWD" round 1
+python3 "$TOPIC_MANAGER" topic-read "$PWD"
 ```
 
-**Step 5: 进入 Battle 循环**
+如果无活跃话题，提示用户先创建。
 
-## Battle 循环核心逻辑
+### Step 2: 判断恢复模式
 
-**核心原则：先讨论达成共识，再统一修改。** Battle 阶段只交换观点和论据，不实际修改代码或方案。所有修改在 `/cc-codex-review 结束` 时根据共识结论统一执行。
+- 如果有 `session_id` -> 模式为 `CONTINUE`
+- 如果无 `session_id`（或之前标记为失效） -> 模式为 `REBUILD`
 
-```
-当前轮次 = 1
-最大轮次 = 5
+### Step 3: 准备 context-bundle.md
 
-WHILE 当前轮次 <= 最大轮次 AND 未达成一致:
+- **CONTINUE 模式**：将已有的 summary.md 内容写入 context-bundle.md 作为上下文提示（Codex 仍通过 session_id 保有完整历史，此文件仅供 Agent 参考）
+- **REBUILD 模式**：将 summary.md 完整内容写入 context-bundle.md 作为从零重建讨论上下文的唯一信息源（旧 session 已失效）
 
-  1. CC 逐条分析 Codex 意见（仅表态，不实际修改）:
-     - 明确 bug / 逻辑错误 -> 同意，记录到共识清单
-     - 合理架构建议且符合项目约束 -> 同意，记录到共识清单
-     - 基于错误前提的意见 -> 反驳并提供正确上下文
-     - 风格偏好 / 非关键优化 -> 标记"后续优化"
-
-  2. CC 构造回复:
-     - 列出已同意的观点及理由
-     - 列出不同意的观点及详细理由
-     - 列出标记为后续优化的项
-     - 不附带修改后的内容（讨论阶段不做实际修改）
-
-  3. 调用 codex MCP 工具（携带 session_id 继续对话）
-     调用完成后刷新活动时间:
-     python3 "$TOPIC_MANAGER" topic-update "$PWD" round <当前轮次>
-
-  4. 每轮更新 summary.md（强结构模板，由 CC 直接写入话题目录）
-     路径: $PWD/.cc-codex/topics/<topic_id>/summary.md
-     （topic_id 从 topic-read 返回值获取）
-
-  5. 判断是否达成一致:
-     - Codex 回复包含 "APPROVE" -> 达成一致，退出循环
-     - Codex 回复包含 "REQUEST_CHANGES" -> 继续 battle
-     - 格式异常 -> 展示原始响应给用户确认
-
-  6. 提前终止条件（AND 逻辑，两个条件同时满足）:
-     - 无高风险（[必须修改]）未决项
-     - 连续 2 轮无新分歧
-     满足时可提前结束
-
-超过 5 轮: 输出分歧清单交用户裁决
-```
-
-**CC 回复 Codex 的格式模板：**
+### Step 4: spawn Agent
 
 ```
-## CC 回复（第 N 轮）
+调用 Task tool:
+  subagent_type: codex-battle-agent
+  description: "CC-Codex Battle Loop"
+  mode: bypassPermissions
+  prompt: |
+    执行 CC-Codex Battle Loop。配置如下：
 
-### 同意的观点
-1. [意见摘要] -> 同意，理由：[为什么认可这个建议]
+    ```json
+    {
+      "mode": "CONTINUE 或 REBUILD",
+      "topic_id": "<topic_id>",
+      "topic_title": "<话题标题>",
+      "topic_type": "<话题类型>",
+      "session_id": "<session_id 或 null>",
+      "workdir": "<$PWD>",
+      "max_rounds": 5,
+      "current_round": <当前轮次>,
+      "context_bundle_path": ".cc-codex/topics/<topic_id>/context-bundle.md",
+      "artifact_type": "<制品文件名>",
+      "debug": false
+    }
+    ```
 
-### 不同意的观点
-1. [意见摘要] -> 不同意，理由：[详细理由和项目上下文]
-
-### 标记为后续优化
-1. [意见摘要] -> 认可价值，但当前阶段优先级不高，标记后续处理
-
-请基于以上回复重新审查，如果所有 [必须修改] 项已达成共识，请回复 APPROVE。
+    context-bundle 路径: .cc-codex/topics/<topic_id>/context-bundle.md
 ```
 
-**共识达成后：** 用户执行 `/cc-codex-review 结束` 时，CC 根据 summary.md 中记录的共识清单统一生成制品，一次性落地所有修改。
+### Step 5: 接收结果并完成
+
+同「讨论启动流程 Step 5」。
+
+## 结束讨论流程（`/cc-codex-review 结束`）
+
+1. 读取活跃话题元数据和 summary.md
+2. 如果 Battle Loop 尚未自然结束（仍有未决项）：
+   - 基于 summary.md 中记录的共识清单，直接生成制品文件
+   - 写入 `$PWD/.cc-codex/topics/<topic_id>/artifacts/<制品文件>`
+3. 如果有 output_dir，复制到用户指定目录
+4. 完成话题：`python3 "$TOPIC_MANAGER" topic-complete "$PWD"`
+5. 向用户报告结论
+
+## 结果展示格式
+
+Agent 返回结果后，向用户展示：
+
+```
+## CC-Codex 讨论结论
+
+**话题**: <话题标题>
+**类型**: <话题类型>
+**轮次**: <final_round>/<max_rounds>
+**结论**: <conclusion>
+
+### 达成共识
+- <consensus_items 列表>
+
+### 待处理项（如有）
+- <pending_items 列表>
+
+### 制品
+- 路径: <artifact_path>
+```
+
+如果 status 为 error，展示错误信息并提示用户可选操作。
+
+Battle 过程的中间产物（summary.md 更新等）不主动展示给用户，除非用户主动查询。
+
+## Debug 模式
+
+用户说 "debug 模式" / "查看交互过程" / "显示完整对话" 时，在 spawn Agent 的 JSON 参数中将 `debug` 设为 `true`。Agent 会将 Codex 调用的 `return_all_messages` 设为 `true`，返回完整对话历史。
+
+## 用户交互说明
+
+- Battle Loop 由 Agent 执行，执行期间用户无法中途干预
+- 用户可通过 MAX_ROUNDS（默认 5）控制最大轮次
+- 如需提前终止正在进行的讨论，等 Agent 返回后使用 `/cc-codex-review 结束` 基于已有 summary 生成制品
+- Agent 执行完毕后，Skill 层统一向用户展示结论摘要
 
 ## 制品输出规则
 
@@ -234,80 +278,33 @@ WHILE 当前轮次 <= 最大轮次 AND 未达成一致:
    - 指定后通过 `topic-update` 保存: `python3 "$TOPIC_MANAGER" topic-update "$PWD" output_dir "<路径>"`
    - 结束时将制品从 artifacts/ 复制到用户指定目录
 
-中间产物（battle 过程中的 summary.md 更新等）不展示给用户，除非用户主动查询。
-
-## 跨会话恢复（双保险）
-
-**主路径：SESSION_ID 恢复**
-- CC 新会话启动时，`topic-read` 检测到活跃话题且有 session_id
-- 使用已保存的 session_id 继续与 Codex 的对话
-- Codex 端保有历史上下文
-
-**备路径：summary.md 重建上下文**
-- 如果 session_id 失效（Codex 返回错误）
-- 读取 summary.md 获取之前的讨论进展
-- 将 summary.md 内容作为上下文构造新 Prompt
-- 开启新 Codex session，从中断处继续
-- 重置 session_id: `python3 "$TOPIC_MANAGER" topic-update "$PWD" session_id null`
-- 保存新 session_id
-
-## 继续讨论流程（`/cc-codex-review 继续`）
-
-1. 读取活跃话题: `python3 "$TOPIC_MANAGER" topic-read "$PWD"`
-2. 如果无活跃话题，提示用户先创建
-3. 尝试主路径恢复（使用 session_id）
-4. 如果 session_id 失效，走备路径（summary.md 重建）
-5. 进入 Battle 循环继续讨论
-
-## 结束讨论流程（`/cc-codex-review 结束`）
-
-1. 读取活跃话题元数据和 summary.md
-2. 根据话题类型生成对应制品文件，写入 artifacts/
-3. 如果有 output_dir，复制到用户指定目录
-4. 完成话题: `python3 "$TOPIC_MANAGER" topic-complete "$PWD"`
-5. 向用户报告：话题标题、轮次、结论摘要、制品位置
-
 ## 异常处理
 
-### Codex 调用失败
-- 重试一次，仍失败则向用户报告错误信息
-- 展示当前讨论进度，询问是否手动继续
+### CodexMCP 不可用
+如果 codex 工具不可用，所有命令将报错并提示安装：
+```
+claude mcp add codex -s user --transport stdio -- uvx --from git+https://github.com/GuDaStudio/codexmcp.git codexmcp
+```
 
-### SESSION_ID 失效
-- 自动切换到备路径：summary.md 重建上下文 + 新 session
-- 重置 session_id 并保存新值
-
-### 响应格式异常
-- Codex 响应中无法识别 APPROVE / REQUEST_CHANGES
-- 将原始响应展示给用户，由用户判断
+### Agent 返回 error
+- 展示 error 信息给用户
+- 提示可选操作：重试 / 手动处理 / 放弃话题
 
 ### topic-manager.py 调用失败
 - 检查 Python 3 是否可用
 - 检查脚本路径是否正确
 - 展示 stderr 错误信息
 
-### 话题目录损坏（CC 侧处理）
-- meta.json 损坏：CC 读取 summary.md 解析基本信息（标题、类型、轮次），手动调用 topic-create 重建话题
-- summary.md 丢失：CC 从 meta.json 读取元数据，用 Write 工具重建空的 summary.md 模板
-- 注意：这些恢复逻辑由 CC 执行，topic-manager.py 本身不提供自动修复
+### 话题目录损坏
+- meta.json 损坏：读取 summary.md 解析基本信息（标题、类型、轮次），调用 topic-create 重建话题
+- summary.md 丢失：从 meta.json 读取元数据，用 Write 工具重建空的 summary.md 模板
+- 这些恢复逻辑由 Skill 层（CC）执行，topic-manager.py 本身不提供自动修复
 
 ### 预算耗尽
-- 将 termination_reason 设为 `budget_exhausted`
-- 保存当前进展到 summary.md
-- 结束话题并告知用户
-
-## 用户交互规范
-
-### Battle 过程中的信息展示
-每轮 battle 向用户展示：
-- 当前轮次 / 最大轮次
-- Codex 的主要意见摘要（不展示完整原文，除非用户要求）
-- CC 的处理决策（接受/反驳/标记后续）
-- 当前状态（继续 battle / 已达成一致 / 需要用户裁决）
-
-### 用户干预点
-- Battle 超过 5 轮时，展示分歧清单，等待用户裁决
-- 用户可随时输入 "stop" 中断 battle，手动处理
+- 当 Agent 返回 `error: "budget_exhausted"` 时
+- 保存当前进展（Agent 已在退出前更新 summary.md）
+- 完成话题：`python3 "$TOPIC_MANAGER" topic-complete "$PWD"`
+- 告知用户讨论因预算耗尽而终止，可用 `/cc-codex-review 继续` 恢复
 
 ## .gitignore 提示
 
@@ -315,11 +312,4 @@ WHILE 当前轮次 <= 最大轮次 AND 未达成一致:
 ```
 # CC-Codex 协作讨论运行时数据
 .cc-codex/
-```
-
-## CodexMCP 依赖
-
-如果 codex 工具不可用，所有命令将报错并提示安装：
-```
-claude mcp add codex -s user --transport stdio -- uvx --from git+https://github.com/GuDaStudio/codexmcp.git codexmcp
 ```
