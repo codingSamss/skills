@@ -127,7 +127,7 @@ ToolSearch query: "select:mcp__codex__codex"
 ### 初始 Prompt 模板
 
 ```
-你是一位资深技术专家，正在与另一位工程师（Claude Code）进行技术讨论。
+你是一位资深专家，正在与另一位工程师（Claude Code）进行讨论。
 
 ## 话题
 [话题标题和描述]
@@ -150,7 +150,7 @@ ToolSearch query: "select:mcp__codex__codex"
 ### REBUILD 模式 Prompt 模板
 
 ```
-你是一位资深技术专家，正在与另一位工程师（Claude Code）进行技术讨论。这是一个恢复的会话，以下是之前讨论的摘要：
+你是一位资深专家，正在与另一位工程师（Claude Code）进行讨论。这是一个恢复的会话，以下是之前讨论的摘要：
 
 ## 之前的讨论进展
 [summary.md 的完整内容]
