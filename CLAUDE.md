@@ -19,7 +19,6 @@ skills/
     │   ├── bird-twitter/
     │   ├── committer/
     │   ├── cc-codex-review/
-    │   ├── json-canvas/
     │   ├── peekaboo/
     │   ├── plugin-manager/
     │   └── ui-ux-pro-max/
@@ -62,7 +61,6 @@ Instructions for Claude...
 | cc-codex-review | Codex MCP server | Python (`scripts/topic-manager.py`) |
 | plugin-manager | Claude Code plugin system | Bash (`scripts/`) |
 | ui-ux-pro-max | Python 3 | Python (`scripts/search.py`, `scripts/core.py`) |
-| json-canvas | None | - |
 
 ## Architecture Patterns
 
