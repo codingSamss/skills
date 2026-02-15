@@ -2,6 +2,8 @@
 set -euo pipefail
 
 NEED_MANUAL=0
+PROXY_HTTP="${HTTP_PROXY:-http://127.0.0.1:7897}"
+PROXY_HTTPS="${HTTPS_PROXY:-http://127.0.0.1:7897}"
 
 echo "[bird-twitter] 检查 Bird CLI..."
 if command -v bird >/dev/null 2>&1; then
@@ -17,10 +19,15 @@ else
 fi
 
 if command -v bird >/dev/null 2>&1; then
-  if bird --cookie-source chrome whoami >/dev/null 2>&1; then
+  if HTTP_PROXY="$PROXY_HTTP" HTTPS_PROXY="$PROXY_HTTPS" \
+       bird --cookie-source chrome --timeout 15000 whoami >/dev/null 2>&1; then
     echo "[bird-twitter] Bird 认证已就绪"
   else
-    echo "[bird-twitter] 需要手动登录 X/Twitter 后执行: bird --cookie-source chrome whoami"
+    echo "[bird-twitter] Bird 认证检查失败，请先确认："
+    echo "  1) Chrome 已登录 X/Twitter"
+    echo "  2) 代理可用（HTTP_PROXY/HTTPS_PROXY），默认尝试: http://127.0.0.1:7897"
+    echo "  3) 可手动验证:"
+    echo "     HTTP_PROXY=$PROXY_HTTP HTTPS_PROXY=$PROXY_HTTPS bird --cookie-source chrome --timeout 15000 whoami"
     NEED_MANUAL=1
   fi
 fi
