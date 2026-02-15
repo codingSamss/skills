@@ -37,7 +37,7 @@ gog auth services
 
 ## 使用方式
 - 触发词：`search email`、`drive files`、`calendar`
-- 详细命令与 OAuth 配置见：`platforms/codex/skills/google-workspace/skill.md`
+- 详细命令与 OAuth 配置见：`platforms/codex/skills/google-workspace/SKILL.md`
 
 ## 依赖
 - gogcli（`brew install steipete/tap/gogcli`）

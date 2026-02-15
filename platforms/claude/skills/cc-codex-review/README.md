@@ -27,7 +27,7 @@ CC-Codex 协作讨论是一个话题驱动的 Claude Code Skill，通过 CodexMC
 ```
 用户 <-> Claude Code <-> codex-battle-agent <-> CodexMCP <-> OpenAI Codex
               |                  |                               |
-              |  skill.md        |  agent (Battle Loop 执行)      |  独立专家视角
+              |  SKILL.md        |  agent (Battle Loop 执行)      |  独立专家视角
               |  (薄触发层)       |  动态角色选择                   |  通过 session_id 保持对话连续
               |                  |                               |
               +---- .cc-codex/ (本地状态) + topic-manager.py ----+
@@ -37,7 +37,7 @@ CC-Codex 协作讨论是一个话题驱动的 Claude Code Skill，通过 CodexMC
 
 | 组件 | 职责 | 实现方式 |
 |------|------|---------|
-| **skill.md** | 薄触发层：命令路由、初始化、上下文收集、spawn Agent、结果展示 | Claude Code 按指令执行 |
+| **SKILL.md** | 薄触发层：命令路由、初始化、上下文收集、spawn Agent、结果展示 | Claude Code 按指令执行 |
 | **codex-battle-agent** | Battle Loop 执行：与 Codex 多轮辩论、动态角色选择、summary 维护、制品生成 | 自定义 Agent（`~/.claude/agents/`） |
 | **topic-manager.py** | 状态管理：话题 CRUD、元数据维护、过期清理 | Python CLI，JSON 输出 |
 | **CodexMCP** | 通信桥接：Claude Code 与 Codex 之间的 MCP 协议适配 | 外部 MCP Server |
@@ -45,7 +45,7 @@ CC-Codex 协作讨论是一个话题驱动的 Claude Code Skill，通过 CodexMC
 **设计原则：**
 
 - **元数据与内容分离**：元数据（meta.json、active.json）由 topic-manager.py 管理并采用原子写入；summary.md 初始模板由 topic-manager.py 生成，后续每轮由 Agent 更新；制品文件由 Agent 在结束流程中写入
-- **Skill-Agent 分层**：skill.md 为薄触发层，只负责命令路由和上下文收集；Battle Loop 执行逻辑委托给 codex-battle-agent
+- **Skill-Agent 分层**：SKILL.md 为薄触发层，只负责命令路由和上下文收集；Battle Loop 执行逻辑委托给 codex-battle-agent
 - **动态角色选择**：Agent 根据 topic_type 自动选择角色（技术类用"资深技术专家"，通用类用"资深专家"），支持非技术话题讨论
 - **原子元数据写入**：topic-manager.py 的关键文件写入采用 .tmp + os.replace() 原子替换，防止中断导致元数据损坏
 - **JSON 标准输出**：topic-manager.py 业务命令的正常输出为 JSON（stdout），帮助信息和错误信息为纯文本（stdout/stderr），便于 CC 解析
@@ -56,12 +56,12 @@ Battle Loop 是 Claude Code（通过 codex-battle-agent）与 Codex 之间的多
 
 核心流程：
 
-1. skill.md 收集上下文，spawn codex-battle-agent
+1. SKILL.md 收集上下文，spawn codex-battle-agent
 2. Agent 将话题和上下文发送给 Codex（根据 topic_type 动态选择角色）
 3. Codex 给出意见，每条标注优先级（[必须修改] / [建议优化] / [疑问]）
 4. Agent 逐条表态：同意（记入共识清单）/ 反驳（附理由）/ 标记后续优化
 5. 重复直到达成共识或达到最大轮次
-6. Agent 返回结构化 JSON 结论，skill.md 向用户展示结果
+6. Agent 返回结构化 JSON 结论，SKILL.md 向用户展示结果
 
 **终止条件：**
 
@@ -272,7 +272,7 @@ python3 topic-manager.py <command> <project_root> [args...]
 
 ```
 cc-codex-review/
-├── skill.md                    # Skill 定义（薄触发层：命令路由、上下文收集）
+├── SKILL.md                    # Skill 定义（薄触发层：命令路由、上下文收集）
 ├── README.md                   # 本文档
 └── scripts/
     └── topic-manager.py        # 话题生命周期管理 CLI

@@ -38,7 +38,7 @@ claude mcp list
 
 ## 使用方式
 - 触发词：`search reddit`、`hot posts`、`reddit comments`
-- 详细工具映射见：`platforms/codex/skills/reddit/skill.md`
+- 详细工具映射见：`platforms/codex/skills/reddit/SKILL.md`
 
 ## 依赖
 - Python3

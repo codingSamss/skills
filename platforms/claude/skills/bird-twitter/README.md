@@ -36,7 +36,7 @@ bird --cookie-source chrome whoami
 
 ## 使用方式
 - 触发词：`read tweet`、`search twitter`、`my bookmarks`、`trending`
-- 详细命令与触发规则见：`platforms/claude/skills/bird-twitter/skill.md`
+- 详细命令与触发规则见：`platforms/claude/skills/bird-twitter/SKILL.md`
 
 ## 依赖
 - Bird CLI（`brew install steipete/tap/bird`）

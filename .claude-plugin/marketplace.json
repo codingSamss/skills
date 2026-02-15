@@ -3,7 +3,7 @@
   "description": "个人 Claude Code Skills 合集",
   "plugins": [
     {
-      "name": "claude-platform",
+      "name": "personal-skills",
       "description": "Claude 平台配置集合",
       "version": "1.0.0",
       "source": "./platforms/claude"

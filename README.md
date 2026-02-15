@@ -13,7 +13,8 @@
 - Claude 的 `skills/agents/hooks/.mcp.json/.claude-plugin` 等完整配置源。
 
 2. `platforms/codex/`
-- Codex 的 `skills/agents/hooks/scripts` 完整配置源。
+- Codex 的 `skills` 官方配置源（`SKILL.md` 规范）。
+- `agents/hooks/scripts` 作为仓库扩展资产保留，不属于 Codex Skills 官方加载路径。
 
 ## 快速使用
 
@@ -36,7 +37,7 @@
 ### Codex 侧
 
 ```bash
-# 从 platforms/codex 镜像同步到 ~/.codex（会清理陈旧文件）
+# 按官方方式同步到 ~/.agents/skills（会清理陈旧 skill）
 ./scripts/sync_to_codex.sh
 
 # 预览
@@ -57,7 +58,7 @@
 ## 平台差异约束
 
 - `cc-codex-review` 只保留在 Claude 平台，不同步到 Codex。
-- Codex 同步采用镜像策略，避免旧配置残留导致“看似同步但实际混用”。
+- Codex Skills 严格使用 `SKILL.md`，并同步到官方目录 `~/.agents/skills`。
 - hooks/agents/scripts 允许平台差异化实现。
 - 各平台 README 作为第一手操作指引。
 

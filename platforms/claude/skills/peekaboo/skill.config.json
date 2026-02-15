@@ -1,5 +1,5 @@
 {
   "name": "peekaboo",
   "targets": ["claude", "codex"],
-  "entry": "skill.md"
+  "entry": "SKILL.md"
 }

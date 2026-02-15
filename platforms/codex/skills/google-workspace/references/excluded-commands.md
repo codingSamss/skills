@@ -2,7 +2,7 @@
 
 The following commands are intentionally NOT exposed in the google-workspace skill to prevent accidental data loss or modification.
 
-> Only the read-only commands explicitly listed in `skill.md` are allowed. Any command not listed there should be treated as excluded.
+> Only the read-only commands explicitly listed in `SKILL.md` are allowed. Any command not listed there should be treated as excluded.
 
 ## Gmail
 - `gog gmail send` - Send emails

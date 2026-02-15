@@ -36,7 +36,7 @@ peekaboo list windows --json
 
 ## 使用方式
 - 触发词：`截图`、`界面`、`显示`、`报错弹窗`
-- 详细策略与清理规则见：`platforms/codex/skills/peekaboo/skill.md`
+- 详细策略与清理规则见：`platforms/codex/skills/peekaboo/SKILL.md`
 
 ## 依赖
 - Peekaboo（`brew install steipete/tap/peekaboo`）

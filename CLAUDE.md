@@ -10,7 +10,7 @@ Multi-platform skills repository with fully isolated sources for Claude and Code
 
 ```
 skills/
-├── marketplace.json              # Marketplace registration
+├── .claude-plugin/marketplace.json # Marketplace registration
 ├── setup.sh                      # Claude platform setup entry
 ├── scripts/                      # Sync/bootstrap scripts
 └── platforms/
@@ -29,7 +29,7 @@ skills/
 
 ## Skill File Format
 
-Each skill is defined by a Markdown file (`skill.md` or `SKILL.md`) with this structure:
+Each skill is defined by a Markdown file (`SKILL.md`) with this structure:
 
 ```markdown
 ---
@@ -70,7 +70,7 @@ Instructions for Claude...
 本项目按平台同步生效。**提交 git 时必须同步验证**。
 
 - Claude 同步入口: `./setup.sh`（源目录 `platforms/claude`）
-- Codex 同步入口: `./scripts/sync_to_codex.sh`（源目录 `platforms/codex`，镜像同步到 `~/.codex`）
+- Codex 同步入口: `./scripts/sync_to_codex.sh`（源目录 `platforms/codex/skills`，镜像同步到 `~/.agents/skills`）
 - 每次 git commit 涉及 `platforms/claude/` 或 `platforms/codex/` 变更时，必须执行对应同步并验证
 
 ## Conventions
