@@ -1,9 +1,9 @@
 {
-  "name": "codingSamss-skills",
-  "description": "个人 Claude Code Skills 合集",
+  "name": "codingSamss-ai-dotfiles",
+  "description": "个人 AI Dotfiles 配置合集（Claude + Codex）",
   "plugins": [
     {
-      "name": "personal-skills",
+      "name": "ai-dotfiles",
       "description": "Claude 平台配置集合",
       "version": "1.0.0",
       "source": "./platforms/claude"

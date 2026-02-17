@@ -65,9 +65,9 @@
 - 输出内容保持自洽，若无法完成任务需说明阻塞点与建议。
 - java项目不用擅自启动mvn跟项目，告诉让我手动启动就行
 
-## 本地同步规则（skills 仓库专用）
+## 本地同步规则（ai-dotfiles 仓库专用）
 
-当工作目录为 skills 多平台技能仓库时，GitHub 仓库、本地项目目录、本地 CLI 根目录（`~/.codex`）三者必须保持一致。
+当工作目录为 ai-dotfiles 多平台配置仓库时，GitHub 仓库、本地项目目录、本地 CLI 根目录（`~/.codex`）三者必须保持一致。
 
 同步入口：`./scripts/sync_to_codex.sh`（同步 `platforms/codex/skills` 与 root 受管配置到 `~/.codex`）
 

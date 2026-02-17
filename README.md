@@ -1,4 +1,4 @@
-# Personal Skills（Claude Code + Codex）
+# AI Dotfiles（Claude Code + Codex）
 
 这个仓库现在采用**平台完全隔离**：
 

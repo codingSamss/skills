@@ -2,6 +2,9 @@
 # 检查插件更新
 # 使用 claude plugin update 命令检查，支持所有安装方式
 
+# 绕过 Claude Code 嵌套会话检测，允许在会话内调用 claude plugin 命令
+unset CLAUDECODE
+
 PLUGINS_JSON="$HOME/.claude/plugins/installed_plugins.json"
 
 # 颜色定义

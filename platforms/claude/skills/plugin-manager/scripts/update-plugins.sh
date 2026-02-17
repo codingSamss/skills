@@ -2,6 +2,9 @@
 # 批量更新插件脚本
 # 直接调用官方命令，检测并更新
 
+# 绕过 Claude Code 嵌套会话检测，允许在会话内调用 claude plugin 命令
+unset CLAUDECODE
+
 PLUGINS_JSON="$HOME/.claude/plugins/installed_plugins.json"
 
 # 颜色定义

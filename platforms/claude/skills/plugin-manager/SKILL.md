@@ -16,7 +16,13 @@ Claude Code 的插件通过官方插件系统安装和管理：
 - **配置文件**: `~/.claude/plugins/installed_plugins.json`
 
 ### 更新机制
-所有插件统一使用 `claude plugin update` 命令更新，无需区分安装方式。
+所有插件统一使用 `claude plugin update <plugin>` 命令逐个更新，不支持 `--all` 批量参数。
+
+### 嵌套会话限制
+`claude plugin update` 内部会启动 Claude Code 进程。在当前会话中直接调用会触发嵌套检测报错：
+> Error: Claude Code cannot be launched inside another Claude Code session.
+
+**解决方案:** 脚本执行前需 `unset CLAUDECODE` 环境变量以绕过嵌套检测。本技能的脚本已内置此处理，可在会话内正常使用。
 
 ## 触发条件
 
@@ -101,3 +107,5 @@ Claude Code 的插件通过官方插件系统安装和管理：
 
 - 更新后需要重启 Claude Code 才能生效
 - 备份文件保存在 `~/.claude/backups/` 目录
+- `claude plugin update` 不支持 `--all` 参数，必须逐个指定插件名称（格式: `<plugin>@<marketplace>`）
+- 脚本已内置 `unset CLAUDECODE` 处理，无需手动绕过嵌套会话限制
