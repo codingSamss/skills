@@ -27,8 +27,13 @@ if [ -f "$PLUGIN_DIR/CLAUDE.md" ]; then
   if [ -f "$TARGET_CLAUDE_MD" ] && ! diff -q "$PLUGIN_DIR/CLAUDE.md" "$TARGET_CLAUDE_MD" >/dev/null 2>&1; then
     echo "[core] 检测到 ~/.claude/CLAUDE.md 与仓库版本存在差异："
     diff --color=auto "$TARGET_CLAUDE_MD" "$PLUGIN_DIR/CLAUDE.md" || true
-    printf "[core] 是否用仓库版本覆盖 ~/.claude/CLAUDE.md？[y/N] "
-    read -r answer
+    if [ ! -t 0 ]; then
+      echo "[core] 非交互环境，默认跳过覆盖 ~/.claude/CLAUDE.md（保留本地版本）"
+      answer="n"
+    else
+      printf "[core] 是否用仓库版本覆盖 ~/.claude/CLAUDE.md？[y/N] "
+      read -r answer || answer=""
+    fi
     if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
       install -m 644 "$PLUGIN_DIR/CLAUDE.md" "$TARGET_CLAUDE_MD"
       echo "[core] CLAUDE.md 已覆盖"

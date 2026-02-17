@@ -5,6 +5,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_ROOT="$SCRIPT_DIR/platforms/claude"
 SKILLS_ROOT="$CLAUDE_ROOT/skills"
 CORE_SETUP="$CLAUDE_ROOT/setup/core.sh"
+DEFAULT_PROXY="http://127.0.0.1:7897"
+
+# 默认走本地代理；若用户已显式设置则尊重用户设置
+: "${HTTP_PROXY:=$DEFAULT_PROXY}"
+: "${HTTPS_PROXY:=$DEFAULT_PROXY}"
+export HTTP_PROXY HTTPS_PROXY
+export http_proxy="$HTTP_PROXY" https_proxy="$HTTPS_PROXY"
 
 SUCCEEDED=()
 MANUAL_REQUIRED=()
@@ -135,6 +142,23 @@ run_skill() {
   run_script "$skill" "$script"
 }
 
+validate_skills_or_exit() {
+  local missing=0
+  local skill
+  for skill in "$@"; do
+    if [ ! -d "$SKILLS_ROOT/$skill" ]; then
+      echo "[错误] 未找到 skill: $skill"
+      missing=1
+    fi
+  done
+
+  if [ "$missing" -eq 1 ]; then
+    echo ""
+    echo "存在无效 skill 参数，请先修正后重试。"
+    exit 1
+  fi
+}
+
 finalize_and_exit() {
   print_summary
 
@@ -189,6 +213,7 @@ main() {
       exit 0
       ;;
     *)
+      validate_skills_or_exit "${args[@]}"
       run_core
       local skill
       for skill in "${args[@]}"; do

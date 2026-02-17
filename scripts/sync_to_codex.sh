@@ -9,6 +9,7 @@ CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 DRY_RUN="false"
 SYNC_SKILLS="true"
 SYNC_ROOT="true"
+AUTO_YES="false"
 
 MANAGED_ROOT_DIRS=(
   "agents"
@@ -27,6 +28,7 @@ usage() {
 用法:
   ./scripts/sync_to_codex.sh
   ./scripts/sync_to_codex.sh --dry-run
+  ./scripts/sync_to_codex.sh --yes
   ./scripts/sync_to_codex.sh --skills-only
   ./scripts/sync_to_codex.sh --root-only
   ./scripts/sync_to_codex.sh --codex-home /path/to/.codex
@@ -38,6 +40,7 @@ usage() {
 
   目录内每个 skill 必须包含 SKILL.md
   所有同步均为增量模式（保留目录外未托管内容）
+  覆盖确认支持交互；非交互默认跳过覆盖。可用 --yes 自动覆盖
 USAGE
 }
 
@@ -50,6 +53,9 @@ while [ $# -gt 0 ]; do
       ;;
     --dry-run)
       DRY_RUN="true"
+      ;;
+    --yes)
+      AUTO_YES="true"
       ;;
     --skills-only)
       SYNC_ROOT="false"
@@ -103,7 +109,14 @@ if [ "$SYNC_SKILLS" = "true" ]; then
   fi
 fi
 
-base_rsync_args=("-a" "--exclude" ".gitkeep")
+base_rsync_args=(
+  "-a"
+  "--exclude" ".gitkeep"
+  "--exclude" "__pycache__/"
+  "--exclude" "*.pyc"
+  "--exclude" "*.pyo"
+  "--exclude" ".DS_Store"
+)
 if [ "$DRY_RUN" = "true" ]; then
   base_rsync_args+=("--dry-run" "--itemize-changes")
 fi
@@ -145,13 +158,23 @@ sync_file_incremental() {
   if [ -f "$target_file" ] && ! diff -q "$source_file" "$target_file" >/dev/null 2>&1; then
     echo "[注意] ${label} 与本地版本存在差异："
     diff --color=auto "$target_file" "$source_file" || true
-    printf "[确认] 是否用仓库版本覆盖 %s？[y/N] " "$target_file"
     if [ "$DRY_RUN" = "true" ]; then
-      echo "(dry-run 模式，跳过)"
+      echo "[跳过] ${label}（dry-run 模式）"
       return 0
     fi
-    read -r answer
-    if [ "$answer" != "y" ] && [ "$answer" != "Y" ]; then
+
+    if [ "$AUTO_YES" = "true" ]; then
+      answer="y"
+      echo "[确认] --yes 已启用，自动覆盖: $target_file"
+    elif [ ! -t 0 ]; then
+      echo "[跳过] ${label}（非交互环境，保留本地版本；可用 --yes 自动覆盖）"
+      return 0
+    else
+      printf "[确认] 是否用仓库版本覆盖 %s？[y/N] " "$target_file"
+      read -r answer || answer=""
+    fi
+
+    if [ "${answer:-}" != "y" ] && [ "${answer:-}" != "Y" ]; then
       echo "[跳过] ${label}（保留本地版本）"
       return 0
     fi
