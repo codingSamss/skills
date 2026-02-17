@@ -44,7 +44,7 @@ python3 "$SCRIPT" generate "一个微服务架构图，包含网关、用户服�
 ```
 
 可选参数：
-- `--output <path>`：指定输出路径（默认 `/tmp/image-gen-<timestamp>.png`）
+- `--output <path>`：指定输出路径（默认 `./images/image-gen-<timestamp>.png`）
 - `--ratio <16:9>`：宽高比（默认 `16:9`）
 - `--style <clean>`：风格 `clean` / `detailed` / `minimal`（默认 `clean`）
 
@@ -82,7 +82,7 @@ python3 "$SCRIPT" diagram --type architecture --file description.txt
 ```
 
 ### Diagram 通用可选参数
-- `--output <path>`：指定输出路径（默认 `/tmp/image-gen-<timestamp>.png`）
+- `--output <path>`：指定输出路径（默认 `./images/image-gen-<timestamp>.png`）
 - `--ratio <16:9>`：宽高比（默认 `16:9`）
 - `--style <clean>`：风格 `clean` / `detailed` / `minimal`（默认 `clean`）
 
@@ -94,5 +94,5 @@ python3 "$SCRIPT" diagram --type architecture --file description.txt
 
 - 首次使用前需编辑 `~/.claude/skills/image-gen/providers.json` 填入 api_key。
 - 默认使用 Huan API + nano-banana-pro 模型。
-- 生成的图片默认保存到 `/tmp/` 目录。
+- 生成的图片默认保存到当前工作目录的 `./images/` 目录。
 - 支持 OpenAI 兼容格式和 Google Gemini 原生格式两种 API 协议。

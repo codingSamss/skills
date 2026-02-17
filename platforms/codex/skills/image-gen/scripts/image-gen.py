@@ -18,6 +18,8 @@ CODEX_HOME = os.path.expanduser(os.environ.get("CODEX_HOME", "~/.codex"))
 CONFIG_PATH = os.path.join(CODEX_HOME, "skills", "image-gen", "providers.json")
 DEFAULT_TIMEOUT = int(os.environ.get("IMAGE_GEN_TIMEOUT", "300"))
 DEFAULT_PROXY = "http://127.0.0.1:7897"
+DEFAULT_DEBUG_DIR = "/tmp/image-gen-debug"
+_DEBUG_SEQ = 0
 
 
 def _ensure_proxy() -> None:
@@ -33,6 +35,99 @@ class ConfigError(RuntimeError):
 
 class APIError(RuntimeError):
     """API request error."""
+
+
+def _env_truthy(value: str | None) -> bool:
+    """Interpret env-like truthy values."""
+    normalized = str(value or "").strip().lower()
+    return normalized in {"1", "true", "yes", "on"}
+
+
+def _sanitize_url(url: str) -> str:
+    """Mask sensitive query params in URL."""
+    masked = re.sub(r"([?&]key=)[^&]+", r"\1***", url, flags=re.IGNORECASE)
+    masked = re.sub(r"([?&]api_key=)[^&]+", r"\1***", masked, flags=re.IGNORECASE)
+    return masked
+
+
+def _sanitize_headers(headers: dict) -> dict:
+    """Mask sensitive auth headers."""
+    sanitized: dict = {}
+    for key, value in headers.items():
+        if str(key).strip().lower() == "authorization":
+            sanitized[key] = "***"
+        else:
+            sanitized[key] = value
+    return sanitized
+
+
+def _resolve_debug_options(args: argparse.Namespace) -> tuple[bool, str]:
+    """Resolve debug options from CLI args + env."""
+    debug_raw = bool(getattr(args, "debug_raw", False))
+    if not debug_raw:
+        debug_raw = _env_truthy(os.environ.get("IMAGE_GEN_DEBUG_RAW"))
+    debug_dir = (
+        str(getattr(args, "debug_dir", "") or "").strip()
+        or str(os.environ.get("IMAGE_GEN_DEBUG_DIR", "") or "").strip()
+        or DEFAULT_DEBUG_DIR
+    )
+    return debug_raw, debug_dir
+
+
+def _write_debug_json(
+    *,
+    enabled: bool,
+    debug_dir: str,
+    provider_key: str,
+    endpoint: str,
+    stage: str,
+    payload: dict,
+) -> str | None:
+    """Write debug JSON payload to disk and return path."""
+    if not enabled:
+        return None
+    safe_provider = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(provider_key or "unknown"))
+    safe_endpoint = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(endpoint or "api"))
+    safe_stage = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(stage or "stage"))
+    ts_ms = int(time.time() * 1000)
+
+    global _DEBUG_SEQ
+    _DEBUG_SEQ += 1
+    filename = f"{ts_ms}-{safe_provider}-{safe_endpoint}-{safe_stage}-{_DEBUG_SEQ}.json"
+
+    os.makedirs(debug_dir, exist_ok=True)
+    path = os.path.join(debug_dir, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    return path
+
+
+def _emit_debug_json(
+    *,
+    enabled: bool,
+    debug_dir: str,
+    provider_key: str,
+    endpoint: str,
+    stage: str,
+    payload: dict,
+) -> None:
+    """Best-effort debug dump with stderr hint."""
+    if not enabled:
+        return
+    try:
+        path = _write_debug_json(
+            enabled=enabled,
+            debug_dir=debug_dir,
+            provider_key=provider_key,
+            endpoint=endpoint,
+            stage=stage,
+            payload=payload,
+        )
+        if path:
+            print(f"[image-gen][debug] {stage}: {path}", file=sys.stderr)
+    except Exception as exc:
+        print(f"[image-gen][debug] 写入失败: {exc}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -122,29 +217,106 @@ def get_active_provider(cfg: dict) -> tuple[str, dict]:
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
-def http_post_json(url: str, headers: dict, body: dict) -> dict:
+def http_post_json(
+    url: str,
+    headers: dict,
+    body: dict,
+    *,
+    debug_raw: bool = False,
+    debug_dir: str = DEFAULT_DEBUG_DIR,
+    provider_key: str = "unknown",
+    endpoint: str = "api",
+) -> dict:
     """POST JSON and return parsed response."""
+    sanitized_url = _sanitize_url(url)
     data = json.dumps(body).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
     for k, v in headers.items():
         req.add_header(k, v)
     req.add_header("Content-Type", "application/json")
+
+    _emit_debug_json(
+        enabled=debug_raw,
+        debug_dir=debug_dir,
+        provider_key=provider_key,
+        endpoint=endpoint,
+        stage="request",
+        payload={
+            "url": sanitized_url,
+            "headers": _sanitize_headers(headers),
+            "body": body,
+        },
+    )
+
     try:
         with urllib.request.urlopen(req, timeout=DEFAULT_TIMEOUT) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            raw_text = resp.read().decode("utf-8", errors="replace")
+            _emit_debug_json(
+                enabled=debug_raw,
+                debug_dir=debug_dir,
+                provider_key=provider_key,
+                endpoint=endpoint,
+                stage="response",
+                payload={
+                    "url": sanitized_url,
+                    "status": getattr(resp, "status", None),
+                    "reason": getattr(resp, "reason", None),
+                    "body_text": raw_text,
+                },
+            )
+            try:
+                return json.loads(raw_text)
+            except json.JSONDecodeError as exc:
+                raise APIError(f"响应不是合法 JSON。响应内容:\n{raw_text[:500]}") from exc
     except urllib.error.HTTPError as exc:
         body_text = ""
         try:
             body_text = exc.read().decode("utf-8", errors="replace")
         except Exception:
             pass
+        _emit_debug_json(
+            enabled=debug_raw,
+            debug_dir=debug_dir,
+            provider_key=provider_key,
+            endpoint=endpoint,
+            stage="http_error",
+            payload={
+                "url": sanitized_url,
+                "status": exc.code,
+                "reason": str(exc.reason) if getattr(exc, "reason", None) else None,
+                "body_text": body_text,
+            },
+        )
         raise APIError(f"HTTP {exc.code}: {body_text[:500]}") from exc
     except (TimeoutError, socket.timeout) as exc:
+        _emit_debug_json(
+            enabled=debug_raw,
+            debug_dir=debug_dir,
+            provider_key=provider_key,
+            endpoint=endpoint,
+            stage="timeout",
+            payload={
+                "url": sanitized_url,
+                "timeout_seconds": DEFAULT_TIMEOUT,
+                "error": str(exc),
+            },
+        )
         raise APIError(
             f"请求超时（>{DEFAULT_TIMEOUT}s）: {url}. "
             "可尝试增大 IMAGE_GEN_TIMEOUT 环境变量。"
         ) from exc
     except urllib.error.URLError as exc:
+        _emit_debug_json(
+            enabled=debug_raw,
+            debug_dir=debug_dir,
+            provider_key=provider_key,
+            endpoint=endpoint,
+            stage="network_error",
+            payload={
+                "url": sanitized_url,
+                "error": str(exc.reason),
+            },
+        )
         raise APIError(f"网络错误: {exc.reason}") from exc
 
 
@@ -167,7 +339,14 @@ def download_url(url: str) -> bytes:
 # API call: OpenAI-compatible format
 # ---------------------------------------------------------------------------
 
-def call_openai(provider: dict, prompt: str) -> bytes:
+def call_openai(
+    provider_key: str,
+    provider: dict,
+    prompt: str,
+    *,
+    debug_raw: bool = False,
+    debug_dir: str = DEFAULT_DEBUG_DIR,
+) -> bytes:
     """Call OpenAI-compatible chat completions API and return image bytes."""
     url = f"{provider['base_url'].rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {provider['api_key']}"}
@@ -175,7 +354,15 @@ def call_openai(provider: dict, prompt: str) -> bytes:
         "model": provider["model"],
         "messages": [{"role": "user", "content": prompt}],
     }
-    resp = http_post_json(url, headers, body)
+    resp = http_post_json(
+        url,
+        headers,
+        body,
+        debug_raw=debug_raw,
+        debug_dir=debug_dir,
+        provider_key=provider_key,
+        endpoint="chat_completions",
+    )
 
     # Extract image from response
     choices = resp.get("choices", [])
@@ -224,7 +411,14 @@ def call_openai(provider: dict, prompt: str) -> bytes:
 # API call: Google Gemini native format
 # ---------------------------------------------------------------------------
 
-def call_gemini(provider: dict, prompt: str) -> bytes:
+def call_gemini(
+    provider_key: str,
+    provider: dict,
+    prompt: str,
+    *,
+    debug_raw: bool = False,
+    debug_dir: str = DEFAULT_DEBUG_DIR,
+) -> bytes:
     """Call Google Gemini generateContent API and return image bytes."""
     model = provider["model"]
     base = provider["base_url"].rstrip("/")
@@ -235,7 +429,15 @@ def call_gemini(provider: dict, prompt: str) -> bytes:
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
     }
-    resp = http_post_json(url, headers, body)
+    resp = http_post_json(
+        url,
+        headers,
+        body,
+        debug_raw=debug_raw,
+        debug_dir=debug_dir,
+        provider_key=provider_key,
+        endpoint="gemini_generate_content",
+    )
 
     # Extract image from Gemini response
     candidates = resp.get("candidates", [])
@@ -255,7 +457,13 @@ def call_gemini(provider: dict, prompt: str) -> bytes:
 # High-level generate
 # ---------------------------------------------------------------------------
 
-def generate_image(prompt: str, output: str | None = None) -> str:
+def generate_image(
+    prompt: str,
+    output: str | None = None,
+    *,
+    debug_raw: bool = False,
+    debug_dir: str = DEFAULT_DEBUG_DIR,
+) -> str:
     """Generate image from prompt and save to file. Return output path."""
     cfg = load_config()
     key, provider = get_active_provider(cfg)
@@ -267,12 +475,26 @@ def generate_image(prompt: str, output: str | None = None) -> str:
     fmt = provider.get("format", "openai")
     print(f"[image-gen] 使用 provider: {provider.get('name', key)} ({fmt})", file=sys.stderr)
     print(f"[image-gen] 模型: {provider.get('model', 'unknown')}", file=sys.stderr)
+    if debug_raw:
+        print(f"[image-gen][debug] raw dump 目录: {debug_dir}", file=sys.stderr)
     print(f"[image-gen] 生成中...", file=sys.stderr)
 
     if fmt == "gemini":
-        img_bytes = call_gemini(provider, prompt)
+        img_bytes = call_gemini(
+            key,
+            provider,
+            prompt,
+            debug_raw=debug_raw,
+            debug_dir=debug_dir,
+        )
     else:
-        img_bytes = call_openai(provider, prompt)
+        img_bytes = call_openai(
+            key,
+            provider,
+            prompt,
+            debug_raw=debug_raw,
+            debug_dir=debug_dir,
+        )
 
     if output is None:
         ts = int(time.time())
@@ -338,7 +560,13 @@ def cmd_generate(args: argparse.Namespace) -> int:
     if extras:
         prompt = prompt + "\n\n" + " ".join(extras)
 
-    output = generate_image(prompt, getattr(args, "output", None))
+    debug_raw, debug_dir = _resolve_debug_options(args)
+    output = generate_image(
+        prompt,
+        getattr(args, "output", None),
+        debug_raw=debug_raw,
+        debug_dir=debug_dir,
+    )
     # Print path to stdout for Claude to pick up
     print(output)
     return 0
@@ -375,7 +603,13 @@ def cmd_diagram(args: argparse.Namespace) -> int:
     if ratio_hint:
         prompt += "\n\n" + ratio_hint
 
-    output = generate_image(prompt, getattr(args, "output", None))
+    debug_raw, debug_dir = _resolve_debug_options(args)
+    output = generate_image(
+        prompt,
+        getattr(args, "output", None),
+        debug_raw=debug_raw,
+        debug_dir=debug_dir,
+    )
     print(output)
     return 0
 
@@ -403,6 +637,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--output", "-o", help="输出文件路径")
     s.add_argument("--ratio", default="16:9", help="宽高比 (默认 16:9)")
     s.add_argument("--style", default="clean", choices=["clean", "detailed", "minimal"], help="风格 (默认 clean)")
+    s.add_argument("--debug-raw", action="store_true", help="落盘保存原始请求/响应 JSON 以便排查")
+    s.add_argument("--debug-dir", help=f"调试文件目录 (默认 {DEFAULT_DEBUG_DIR})")
     s.set_defaults(func=cmd_generate)
 
     # diagram
@@ -413,6 +649,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--output", "-o", help="输出文件路径")
     s.add_argument("--ratio", default="16:9", help="宽高比 (默认 16:9)")
     s.add_argument("--style", default="clean", choices=["clean", "detailed", "minimal"], help="风格 (默认 clean)")
+    s.add_argument("--debug-raw", action="store_true", help="落盘保存原始请求/响应 JSON 以便排查")
+    s.add_argument("--debug-dir", help=f"调试文件目录 (默认 {DEFAULT_DEBUG_DIR})")
     s.set_defaults(func=cmd_diagram)
 
     return p

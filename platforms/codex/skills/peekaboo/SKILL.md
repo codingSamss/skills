@@ -9,7 +9,12 @@ description: "macOS截图与视觉分析。自动截图、UI分析、窗口捕�
 
 ## 截图保存目录
 
-所有截图保存到: `/Users/suqi3/Documents/peekabooImg/`
+默认目录变量：
+```bash
+PEEKABOO_IMG_DIR="${HOME}/Documents/peekabooImg"
+```
+
+所有截图保存到: `${PEEKABOO_IMG_DIR}/`
 
 ## 自动触发条件
 
@@ -32,19 +37,22 @@ description: "macOS截图与视觉分析。自动截图、UI分析、窗口捕�
 
 ### 截取当前窗口
 ```bash
-peekaboo see --mode frontmost --path /Users/suqi3/Documents/peekabooImg/screenshot_$(date +%s).png --json
+PEEKABOO_IMG_DIR="${HOME}/Documents/peekabooImg"
+peekaboo see --mode frontmost --path "${PEEKABOO_IMG_DIR}/screenshot_$(date +%s).png" --json
 ```
 
 ### 截取指定应用
 ```bash
-peekaboo see --app "IntelliJ IDEA" --path /Users/suqi3/Documents/peekabooImg/screenshot_$(date +%s).png --json
-peekaboo see --app "Safari" --path /Users/suqi3/Documents/peekabooImg/screenshot_$(date +%s).png --json
-peekaboo see --app "Terminal" --path /Users/suqi3/Documents/peekabooImg/screenshot_$(date +%s).png --json
+PEEKABOO_IMG_DIR="${HOME}/Documents/peekabooImg"
+peekaboo see --app "IntelliJ IDEA" --path "${PEEKABOO_IMG_DIR}/screenshot_$(date +%s).png" --json
+peekaboo see --app "Safari" --path "${PEEKABOO_IMG_DIR}/screenshot_$(date +%s).png" --json
+peekaboo see --app "Terminal" --path "${PEEKABOO_IMG_DIR}/screenshot_$(date +%s).png" --json
 ```
 
 ### 截图并AI分析
 ```bash
-peekaboo see --mode frontmost --path /Users/suqi3/Documents/peekabooImg/screenshot_$(date +%s).png --analyze "描述界面内容"
+PEEKABOO_IMG_DIR="${HOME}/Documents/peekabooImg"
+peekaboo see --mode frontmost --path "${PEEKABOO_IMG_DIR}/screenshot_$(date +%s).png" --analyze "描述界面内容"
 ```
 
 ### 列出所有窗口
@@ -54,7 +62,8 @@ peekaboo list windows --json
 
 ### 截取指定标题窗口
 ```bash
-peekaboo see --window-title "窗口标题" --path /Users/suqi3/Documents/peekabooImg/screenshot_$(date +%s).png --json
+PEEKABOO_IMG_DIR="${HOME}/Documents/peekabooImg"
+peekaboo see --window-title "窗口标题" --path "${PEEKABOO_IMG_DIR}/screenshot_$(date +%s).png" --json
 ```
 
 ## 清理规则
@@ -63,7 +72,8 @@ peekaboo see --window-title "窗口标题" --path /Users/suqi3/Documents/peekabo
 
 ```bash
 # 清理截图文件
-rm -f /Users/suqi3/Documents/peekabooImg/*.png
+PEEKABOO_IMG_DIR="${HOME}/Documents/peekabooImg"
+rm -f "${PEEKABOO_IMG_DIR}"/*.png
 
 # 清理peekaboo快照缓存
 peekaboo clean --all-snapshots 2>/dev/null || true

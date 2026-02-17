@@ -264,7 +264,9 @@ def generate_image(prompt: str, output: str | None = None) -> str:
 
     if output is None:
         ts = int(time.time())
-        output = f"/tmp/image-gen-{ts}.png"
+        output_dir = os.path.join(os.getcwd(), "images")
+        os.makedirs(output_dir, exist_ok=True)
+        output = os.path.join(output_dir, f"image-gen-{ts}.png")
 
     with open(output, "wb") as f:
         f.write(img_bytes)

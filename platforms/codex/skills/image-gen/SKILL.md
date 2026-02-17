@@ -47,6 +47,8 @@ python3 "$SCRIPT" generate "一个微服务架构图，包含网关、用户服�
 - `--output <path>`：指定输出路径（默认 `/tmp/image-gen-<timestamp>.png`）
 - `--ratio <16:9>`：宽高比（默认 `16:9`）
 - `--style <clean>`：风格 `clean` / `detailed` / `minimal`（默认 `clean`）
+- `--debug-raw`：将原始请求/响应 JSON 落盘，便于排查接口返回问题
+- `--debug-dir <path>`：调试文件目录（默认 `/tmp/image-gen-debug`）
 
 ## Diagram（图表模式）
 
@@ -85,10 +87,18 @@ python3 "$SCRIPT" diagram --type architecture --file description.txt
 - `--output <path>`：指定输出路径（默认 `/tmp/image-gen-<timestamp>.png`）
 - `--ratio <16:9>`：宽高比（默认 `16:9`）
 - `--style <clean>`：风格 `clean` / `detailed` / `minimal`（默认 `clean`）
+- `--debug-raw`：将原始请求/响应 JSON 落盘，便于排查接口返回问题
+- `--debug-dir <path>`：调试文件目录（默认 `/tmp/image-gen-debug`）
 
 ## 输出约定
 
 脚本成功后会输出图片文件路径，使用 Read 工具查看图片内容展示给用户。
+
+## 失败策略（严格）
+
+- 若 `generate` / `diagram` 命令返回非 0、超时、或提示“未在响应中找到图片/只返回文本”，必须直接向用户报告失败原因。
+- 禁止使用 PIL/Pillow/Canvas/matplotlib 等本地绘制作为“兜底图”。
+- 仅当脚本标准输出返回真实图片路径且文件存在时，才可声明“已生成成功”。
 
 ## Important Notes
 
@@ -97,3 +107,4 @@ python3 "$SCRIPT" diagram --type architecture --file description.txt
 - 生成的图片默认保存到 `/tmp/` 目录。
 - 支持 OpenAI 兼容格式和 Google Gemini 原生格式两种 API 协议。
 - 可通过环境变量 `IMAGE_GEN_TIMEOUT` 调整请求超时（默认 300 秒）。
+- 可通过 `IMAGE_GEN_DEBUG_RAW=1` 开启调试落盘；目录可用 `IMAGE_GEN_DEBUG_DIR` 指定。
