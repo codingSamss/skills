@@ -1,0 +1,5 @@
+{
+  "name": "image-gen",
+  "targets": ["claude"],
+  "entry": "SKILL.md"
+}
