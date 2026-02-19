@@ -97,6 +97,14 @@ HTTP_PROXY=http://127.0.0.1:7897 HTTPS_PROXY=http://127.0.0.1:7897 bird --cookie
 HTTP_PROXY=http://127.0.0.1:7897 HTTPS_PROXY=http://127.0.0.1:7897 bird --cookie-source chrome --timeout 15000 home -n 20
 ```
 
+### 8b. View Following Timeline
+**Triggers:** "timeline", "following timeline", "关注时间线"
+
+Following 时间线按时间排序，是日常信息获取的主要入口。默认拉 100 条以覆盖近一天的内容，避免遗漏。
+```bash
+HTTP_PROXY=http://127.0.0.1:7897 HTTPS_PROXY=http://127.0.0.1:7897 bird --cookie-source chrome --timeout 15000 home --following -n 100
+```
+
 ### 9. View User Tweets
 **Triggers:** "tweets from [username]", "timeline [username]", "[username]'s tweets"
 ```bash
