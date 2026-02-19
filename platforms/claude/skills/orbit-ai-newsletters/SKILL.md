@@ -16,11 +16,13 @@ description: "AI 新闻简报，多源抓取去重排序生成每日摘要。Key
 
 ### 扩展源（通过已有 Skill 获取）
 
-| 源 | 获取方式 | 用途 |
+执行前询问用户今日关注的关键词或话题，用户无输入则使用默认值。
+
+| 源 | 获取方式（将 `{keywords}` 替换为用户关键词，默认 `"AI OR LLM OR Claude"`） | 用途 |
 |----|---------|------|
-| X/Twitter | `bird --cookie-source chrome search "AI OR LLM OR Claude" -n 10 --plain` | 英文AI热点讨论 |
-| Reddit | Composio MCP `REDDIT_SEARCH_ACROSS_SUBREDDITS` 搜索 "AI" | r/MachineLearning 等社区深度讨论 |
-| LINUX DO | `python3 "$HOME/.claude/skills/linuxdo/scripts/linuxdo.py" search "AI" --limit 10` | 中文AI社区视角 |
+| X/Twitter | `bird --cookie-source chrome search "{keywords}" -n 10 --plain` | 英文AI热点讨论 |
+| Reddit | Composio MCP `REDDIT_SEARCH_ACROSS_SUBREDDITS` 搜索 `{keywords}`（默认 `"AI"`） | r/MachineLearning 等社区深度讨论 |
+| LINUX DO | `python3 "$HOME/.claude/skills/linuxdo/scripts/linuxdo.py" search "{keywords}" --limit 10`（默认 `"AI"`） | 中文AI社区视角 |
 
 ## 工作流
 
