@@ -61,6 +61,11 @@ for skill_dir in "$PLUGIN_DIR"/skills/*/; do
     [ -f "$target_dir/skill.md" ] && [ ! -f "$target_dir/SKILL.md" ] && rm -f "$target_dir/skill.md"
     install -m 644 "$skill_dir/SKILL.md" "$target_dir/SKILL.md"
   fi
+  # 同步子目录（如 workflows/）
+  for sub in "$skill_dir"*/; do
+    [ -d "$sub" ] || continue
+    cp -r "${sub%/}" "$target_dir/"
+  done
   echo "  - $skill_name"
 done
 
