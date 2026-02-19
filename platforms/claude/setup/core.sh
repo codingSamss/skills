@@ -54,11 +54,11 @@ for skill_dir in "$PLUGIN_DIR"/skills/*/; do
   [ -d "$skill_dir" ] || continue
   skill_name="$(basename "$skill_dir")"
   target_dir="$HOME/.claude/skills/$skill_name"
+  # 清理后重建，确保已删除的文件不会残留
+  rm -rf "$target_dir"
   mkdir -p "$target_dir"
-  # 同步 SKILL.md（同时处理大小写差异，统一为 SKILL.md）
+  # 同步 SKILL.md
   if [ -f "$skill_dir/SKILL.md" ]; then
-    # 清理可能存在的旧小写文件
-    [ -f "$target_dir/skill.md" ] && [ ! -f "$target_dir/SKILL.md" ] && rm -f "$target_dir/skill.md"
     install -m 644 "$skill_dir/SKILL.md" "$target_dir/SKILL.md"
   fi
   # 同步子目录（如 workflows/）
