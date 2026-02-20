@@ -227,6 +227,12 @@ detect_terminal_bundle_id() {
 # 获取bundleId
 BUNDLE_ID=$(detect_terminal_bundle_id)
 
+# Ghostty 自带通知，避免重复弹窗
+if [[ "${TERM_PROGRAM:-}" =~ [Gg]hostty ]]; then
+    log_debug "skip notify in Ghostty"
+    exit 0
+fi
+
 case "$EVENT_TYPE" in
     stop)
         MESSAGE="${RAW_MESSAGE}"

@@ -199,6 +199,13 @@ def main() -> int:
     if is_codex_app_runtime():
         return 0
 
+    # Ghostty 已有内建通知，避免重复弹窗
+    term_program = os.environ.get("TERM_PROGRAM", "")
+    term_value = os.environ.get("TERM", "")
+    if term_program.lower() == "ghostty" or "ghostty" in term_value.lower():
+        debug("skip notify inside Ghostty")
+        return 0
+
     project_name = get_project_name(payload)
 
     if event_type == "approval-requested":
